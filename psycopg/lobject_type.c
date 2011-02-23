@@ -124,7 +124,8 @@ static PyObject *
 psyco_lobj_read(lobjectObject *self, PyObject *args)
 {
     PyObject *res;
-    int where, end, size = -1;
+    int where, end;
+    Py_ssize_t size = -1;
     char *buffer;
 
     if (!PyArg_ParseTuple(args, "|i", &size)) return NULL;
