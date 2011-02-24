@@ -128,8 +128,12 @@ psyco_lobj_read(lobjectObject *self, PyObject *args)
     Py_ssize_t size = -1;
     char *buffer;
 
+#if PY_VERSION_HEX < 0x02050000
     if (!PyArg_ParseTuple(args, "|i", &size)) return NULL;
-
+#else
+    /* Python 2.5 introduced the 'n' parsing argument for Py_ssize_t (64bit) */
+    if (!PyArg_ParseTuple(args, "|n", &size)) return NULL;
+#endif
     EXC_IF_LOBJ_CLOSED(self);
     EXC_IF_LOBJ_LEVEL0(self);
     EXC_IF_LOBJ_UNMARKED(self);
