@@ -120,7 +120,7 @@ def skip_if_no_hstore(f):
     def skip_if_no_hstore_(self):
         from psycopg2.extras import HstoreAdapter
         oids = HstoreAdapter.get_oids(self.conn)
-        if oids is None:
+        if oids is None or not oids[0]:
             return self.skipTest("hstore not available in test database")
         return f(self)
 
@@ -276,7 +276,7 @@ class HstoreTestCase(unittest.TestCase):
             finally:
                 conn2.close()
         finally:
-            psycopg2.extensions.string_types.pop(oids[0])
+            psycopg2.extensions.string_types.pop(oids[0][0])
 
         # verify the caster is not around anymore
         cur = self.conn.cursor()
