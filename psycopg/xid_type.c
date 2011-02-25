@@ -101,8 +101,7 @@ xid_init(XidObject *self, PyObject *args, PyObject *kwargs)
 {
     static char *kwlist[] = {"format_id", "gtrid", "bqual", NULL};
     int format_id;
-    unsigned int i;
-    size_t gtrid_len, bqual_len;
+    size_t i, gtrid_len, bqual_len;
     const char *gtrid, *bqual;
     PyObject *tmp;
 
