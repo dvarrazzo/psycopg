@@ -194,6 +194,11 @@ pq_raise(connectionObject *conn, cursorObject *curs, PGresult *pgres)
     if (code != NULL) {
         exc = exception_from_sqlstate(code);
     }
+    else {
+        /* Fallback if there is no exception code (reported happening e.g.
+         * when the connection is closed). */
+        exc = DatabaseError;
+    }
 
     /* try to remove the initial "ERROR: " part from the postgresql error */
     err2 = strip_severity(err);
@@ -401,23 +406,17 @@ int
 pq_begin_locked(connectionObject *conn, PGresult **pgres, char **error,
                 PyThreadState **tstate)
 {
-    const char *query[] = {
-        NULL,
-        "BEGIN; SET TRANSACTION ISOLATION LEVEL READ COMMITTED",
-        "BEGIN; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"};
     int result;
 
-    Dprintf("pq_begin_locked: pgconn = %p, isolevel = %ld, status = %d",
-            conn->pgconn, conn->isolation_level, conn->status);
+    Dprintf("pq_begin_locked: pgconn = %p, autocommit = %d, status = %d",
+            conn->pgconn, conn->autocommit, conn->status);
 
-    if (conn->isolation_level == ISOLATION_LEVEL_AUTOCOMMIT
-            || conn->status != CONN_STATUS_READY) {
+    if (conn->autocommit || conn->status != CONN_STATUS_READY) {
         Dprintf("pq_begin_locked: transaction in progress");
         return 0;
     }
 
-    result = pq_execute_command_locked(conn, query[conn->isolation_level],
-                                       pgres, error, tstate);
+    result = pq_execute_command_locked(conn, "BEGIN;", pgres, error, tstate);
     if (result == 0)
         conn->status = CONN_STATUS_BEGIN;
 
@@ -437,11 +436,10 @@ pq_commit(connectionObject *conn)
     PGresult *pgres = NULL;
     char *error = NULL;
 
-    Dprintf("pq_commit: pgconn = %p, isolevel = %ld, status = %d",
-            conn->pgconn, conn->isolation_level, conn->status);
+    Dprintf("pq_commit: pgconn = %p, autocommit = %d, status = %d",
+            conn->pgconn, conn->autocommit, conn->status);
 
-    if (conn->isolation_level == ISOLATION_LEVEL_AUTOCOMMIT
-           || conn->status != CONN_STATUS_BEGIN) {
+    if (conn->autocommit || conn->status != CONN_STATUS_BEGIN) {
         Dprintf("pq_commit: no transaction to commit");
         return 0;
     }
@@ -452,10 +450,12 @@ pq_commit(connectionObject *conn)
 
     retvalue = pq_execute_command_locked(conn, "COMMIT", &pgres, &error, &_save);
 
+    Py_BLOCK_THREADS;
+    conn_notice_process(conn);
+    Py_UNBLOCK_THREADS;
+
     pthread_mutex_unlock(&conn->lock);
     Py_END_ALLOW_THREADS;
-
-    conn_notice_process(conn);
 
     if (retvalue < 0)
         pq_complete_error(conn, &pgres, &error);
@@ -473,11 +473,10 @@ pq_abort_locked(connectionObject *conn, PGresult **pgres, char **error,
 {
     int retvalue = -1;
 
-    Dprintf("pq_abort_locked: pgconn = %p, isolevel = %ld, status = %d",
-            conn->pgconn, conn->isolation_level, conn->status);
+    Dprintf("pq_abort_locked: pgconn = %p, autocommit = %d, status = %d",
+            conn->pgconn, conn->autocommit, conn->status);
 
-    if (conn->isolation_level == ISOLATION_LEVEL_AUTOCOMMIT
-            || conn->status != CONN_STATUS_BEGIN) {
+    if (conn->autocommit || conn->status != CONN_STATUS_BEGIN) {
         Dprintf("pq_abort_locked: no transaction to abort");
         return 0;
     }
@@ -502,11 +501,10 @@ pq_abort(connectionObject *conn)
     PGresult *pgres = NULL;
     char *error = NULL;
 
-    Dprintf("pq_abort: pgconn = %p, isolevel = %ld, status = %d",
-            conn->pgconn, conn->isolation_level, conn->status);
+    Dprintf("pq_abort: pgconn = %p, autocommit = %d, status = %d",
+            conn->pgconn, conn->autocommit, conn->status);
 
-    if (conn->isolation_level == ISOLATION_LEVEL_AUTOCOMMIT
-           || conn->status != CONN_STATUS_BEGIN) {
+    if (conn->autocommit || conn->status != CONN_STATUS_BEGIN) {
         Dprintf("pq_abort: no transaction to abort");
         return 0;
     }
@@ -516,10 +514,12 @@ pq_abort(connectionObject *conn)
 
     retvalue = pq_abort_locked(conn, &pgres, &error, &_save);
 
+    Py_BLOCK_THREADS;
+    conn_notice_process(conn);
+    Py_UNBLOCK_THREADS;
+
     pthread_mutex_unlock(&conn->lock);
     Py_END_ALLOW_THREADS;
-
-    conn_notice_process(conn);
 
     if (retvalue < 0)
         pq_complete_error(conn, &pgres, &error);
@@ -542,13 +542,12 @@ pq_reset_locked(connectionObject *conn, PGresult **pgres, char **error,
 {
     int retvalue = -1;
 
-    Dprintf("pq_reset_locked: pgconn = %p, isolevel = %ld, status = %d",
-            conn->pgconn, conn->isolation_level, conn->status);
+    Dprintf("pq_reset_locked: pgconn = %p, autocommit = %d, status = %d",
+            conn->pgconn, conn->autocommit, conn->status);
 
     conn->mark += 1;
 
-    if (conn->isolation_level != ISOLATION_LEVEL_AUTOCOMMIT
-           && conn->status == CONN_STATUS_BEGIN) {
+    if (!conn->autocommit && conn->status == CONN_STATUS_BEGIN) {
         retvalue = pq_execute_command_locked(conn, "ABORT", pgres, error, tstate);
         if (retvalue != 0) return retvalue;
     }
@@ -573,18 +572,20 @@ pq_reset(connectionObject *conn)
     PGresult *pgres = NULL;
     char *error = NULL;
 
-    Dprintf("pq_reset: pgconn = %p, isolevel = %ld, status = %d",
-            conn->pgconn, conn->isolation_level, conn->status);
+    Dprintf("pq_reset: pgconn = %p, autocommit = %d, status = %d",
+            conn->pgconn, conn->autocommit, conn->status);
 
     Py_BEGIN_ALLOW_THREADS;
     pthread_mutex_lock(&conn->lock);
 
     retvalue = pq_reset_locked(conn, &pgres, &error, &_save);
 
+    Py_BLOCK_THREADS;
+    conn_notice_process(conn);
+    Py_UNBLOCK_THREADS;
+
     pthread_mutex_unlock(&conn->lock);
     Py_END_ALLOW_THREADS;
-
-    conn_notice_process(conn);
 
     if (retvalue < 0) {
         pq_complete_error(conn, &pgres, &error);
@@ -670,11 +671,13 @@ pq_is_busy(connectionObject *conn)
 
     res = PQisBusy(conn->pgconn);
 
+    Py_BLOCK_THREADS;
+    conn_notifies_process(conn);
+    conn_notice_process(conn);
+    Py_UNBLOCK_THREADS;
+
     pthread_mutex_unlock(&(conn->lock));
     Py_END_ALLOW_THREADS;
-
-    conn_notice_process(conn);
-    conn_notifies_process(conn);
 
     return res;
 }
@@ -695,9 +698,9 @@ pq_is_busy_locked(connectionObject *conn)
         return -1;
     }
 
-    /* We can't call conn_notice_process/conn_notifies_process because
-      they try to get the lock. We don't need anyway them because at the end of
-      the loop we are in (async reading) pq_fetch will be called. */
+    /* notices and notifies will be processed at the end of the loop we are in
+     * (async reading) by pq_fetch. */
+
     return PQisBusy(conn->pgconn);
 }
 
@@ -786,6 +789,15 @@ pq_execute(cursorObject *curs, const char *query, int async)
             }
             return -1;
         }
+
+        /* Process notifies here instead of when fetching the tuple as we are
+         * into the same critical section that received the data. Without this
+         * care, reading notifies may disrupt other thread communications.
+         * (as in ticket #55). */
+        Py_BLOCK_THREADS;
+        conn_notifies_process(curs->conn);
+        conn_notice_process(curs->conn);
+        Py_UNBLOCK_THREADS;
     }
 
     else if (async == 1) {
@@ -1373,9 +1385,6 @@ pq_fetch(cursorObject *curs)
         ex = -1;
         break;
     }
-
-    conn_notice_process(curs->conn);
-    conn_notifies_process(curs->conn);
 
     /* error checking, close the connection if necessary (some critical errors
        are not really critical, like a COPY FROM error: if that's the case we

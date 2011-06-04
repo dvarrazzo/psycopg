@@ -1,3 +1,20 @@
+What's new in psycopg 2.4.2
+---------------------------
+
+  - Added 'set_transaction()' method and 'autocommit' property to the
+    connection. Added support for read-only sessions and, for PostgreSQL
+    9.1, for the "repeatable read" isolation level and the "deferrable"
+    transaction property.
+  - Psycopg doesn't execute queries at connection time to find the
+    default isolation level.
+  - Fixed bug with multithread code potentially causing loss of sync
+    with the server communication or lock of the client (ticket #55).
+  - Don't fail import if mx.DateTime module can't be found, even if its
+    support was built (ticket #53).
+  - Fixed escape for negative numbers prefixed by minus operator
+    (ticket #57).
+
+
 What's new in psycopg 2.4.1
 ---------------------------
 
@@ -6,6 +23,9 @@ What's new in psycopg 2.4.1
   - Don't fail connection if the client encoding is a non-normalized
     variant. Issue reported by Peter Eisentraut.
   - Correctly detect an empty query sent to the backend (ticket #46).
+  - Fixed a SystemError clobbering libpq errors raised without SQLSTATE.
+    Bug vivisectioned by Eric Snow.
+  - Fixed interaction between NamedTuple and server-side cursors.
   - Allow to specify --static-libpq on setup.py command line instead of
     just in 'setup.cfg'. Patch provided by Matthew Ryan (ticket #48).
 

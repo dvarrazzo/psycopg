@@ -79,7 +79,7 @@ except ImportError:
 # Take a look at http://www.python.org/dev/peps/pep-0386/
 # for a consistent versioning pattern.
 
-PSYCOPG_VERSION = '2.4.1a0'
+PSYCOPG_VERSION = '2.4.2.dev0'
 
 version_flags   = ['dt', 'dec']
 
@@ -414,7 +414,7 @@ sources = [
 
     'adapter_asis.c', 'adapter_binary.c', 'adapter_datetime.c',
     'adapter_list.c', 'adapter_pboolean.c', 'adapter_pdecimal.c',
-    'adapter_pfloat.c', 'adapter_qstring.c',
+    'adapter_pint.c', 'adapter_pfloat.c', 'adapter_qstring.c',
     'microprotocols.c', 'microprotocols_proto.c',
     'typecast.c',
 ]
@@ -427,7 +427,7 @@ depends = [
 
     'adapter_asis.h', 'adapter_binary.h', 'adapter_datetime.h',
     'adapter_list.h', 'adapter_pboolean.h', 'adapter_pdecimal.h',
-    'adapter_pfloat.h', 'adapter_qstring.h',
+    'adapter_pint.h', 'adapter_pfloat.h', 'adapter_qstring.h',
     'microprotocols.h', 'microprotocols_proto.h',
     'typecast.h', 'typecast_binary.h',
 
@@ -450,6 +450,7 @@ if parser.has_option('build_ext', 'mx_include_dir'):
 else:
     mxincludedir = os.path.join(get_python_inc(plat_specific=1), "mx")
 if os.path.exists(mxincludedir):
+    # Build the support for mx: we will check at runtime if it can be imported
     include_dirs.append(mxincludedir)
     define_macros.append(('HAVE_MXDATETIME','1'))
     sources.append('adapter_mxdatetime.c')
