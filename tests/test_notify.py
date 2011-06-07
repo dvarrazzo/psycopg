@@ -29,6 +29,7 @@ from psycopg2 import extensions
 from testconfig import dsn
 from testutils import script_to_py3
 
+import os
 import sys
 import time
 import select
@@ -76,7 +77,14 @@ conn.close()
 """
             % { 'dsn': dsn, 'sec': sec, 'name': name, 'payload': payload})
 
-        return Popen([sys.executable, '-c', script_to_py3(script)], stdout=PIPE)
+        # We have to pass the modified sys.path to the child shell so that
+        # we preserve any additions to sys.path that have been made up to
+        # this point.  setup.py modifies sys.path while running tests so
+        # that we can test without installing first.
+        parent_env = os.environ.copy()
+        parent_env['PYTHONPATH'] = ':'.join(sys.path)
+        return Popen([sys.executable, '-c', script_to_py3(script)], stdout=PIPE,
+                     env=parent_env)
 
     def test_notifies_received_on_poll(self):
         self.autocommit(self.conn)
