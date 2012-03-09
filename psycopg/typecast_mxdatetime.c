@@ -86,10 +86,12 @@ typecast_MXDATE_cast(const char *str, Py_ssize_t len, PyObject *curs)
         }
     }
 
-    Dprintf("typecast_MXDATE_cast: fractionary seconds: %lf",
-        (double)ss + (double)us/(double)1000000.0);
-    return mxDateTime.DateTime_FromDateAndTime(y, m, d, hh, mm,
-        (double)ss + (double)us/(double)1000000.0);
+    /* NOCOMMIT */
+    return mxDateTime.DateTime_FromDateAndTime(y, m, d, hh, mm, 0.0);
+    /* Dprintf("typecast_MXDATE_cast: fractionary seconds: %lf", */
+    /*     (double)ss + (double)us/(double)1000000.0); */
+    /* return mxDateTime.DateTime_FromDateAndTime(y, m, d, hh, mm, */
+    /*     (double)ss + (double)us/(double)1000000.0); */
 }
 
 /** TIME - parse time into an mx.DateTime object **/
@@ -113,10 +115,12 @@ typecast_MXTIME_cast(const char *str, Py_ssize_t len, PyObject *curs)
         return NULL;
     }
 
-    Dprintf("typecast_MXTIME_cast: fractionary seconds: %lf",
-        (double)ss + (double)us/(double)1000000.0);
-    return mxDateTime.DateTimeDelta_FromTime(hh, mm,
-        (double)ss + (double)us/(double)1000000.0);
+    /* NOCOMMIT */
+    /* Dprintf("typecast_MXTIME_cast: fractionary seconds: %lf", */
+    /*     (double)ss + (double)us/(double)1000000.0); */
+    /* return mxDateTime.DateTimeDelta_FromTime(hh, mm, */
+    /*     (double)ss + (double)us/(double)1000000.0); */
+    return mxDateTime.DateTimeDelta_FromTime(hh, mm, 0.0);
 }
 
 /** INTERVAL - parse an interval into an mx.DateTimeDelta **/
@@ -142,7 +146,8 @@ typecast_MXINTERVAL_cast(const char *str, Py_ssize_t len, PyObject *curs)
 
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
-            v = v * 10.0 + (double)(*str - '0');
+            /* NOCOMMIT */
+            /* v = v * 10.0 + (double)(*str - '0'); */
             Dprintf("typecast_MXINTERVAL_cast: v = %f", v);
             if (part == 6){
                 denominator *= 10;
@@ -153,7 +158,8 @@ typecast_MXINTERVAL_cast(const char *str, Py_ssize_t len, PyObject *curs)
 
         case 'y':
             if (part == 0) {
-                years = (long)(v*sign);
+                /* NOCOMMIT */
+                years = 1;
                 str = skip_until_space(str);
                 Dprintf("typecast_MXINTERVAL_cast: years = %ld, rest = %s",
                         years, str);
@@ -163,7 +169,8 @@ typecast_MXINTERVAL_cast(const char *str, Py_ssize_t len, PyObject *curs)
 
         case 'm':
             if (part <= 1) {
-                months = (long)(v*sign);
+                /* NOCOMMIT */
+                months = 1;
                 str = skip_until_space(str);
                 Dprintf("typecast_MXINTERVAL_cast: months = %ld, rest = %s",
                         months, str);
@@ -173,7 +180,8 @@ typecast_MXINTERVAL_cast(const char *str, Py_ssize_t len, PyObject *curs)
 
         case 'd':
             if (part <= 2) {
-                days = (long)(v*sign);
+                /* NOCOMMIT */
+                days = 1;
                 str = skip_until_space(str);
                 Dprintf("typecast_MXINTERVAL_cast: days = %ld, rest = %s",
                         days, str);

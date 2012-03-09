@@ -447,7 +447,8 @@ typecast_repr(PyObject *self)
     PyObject *name = ((typecastObject *)self)->name;
     PyObject *rv;
 
-    Py_INCREF(name);
+    /* NOCOMMIT */
+    /* Py_INCREF(name); */
     if (!(name = psycopg_ensure_bytes(name))) {
         return NULL;
     }
@@ -455,7 +456,7 @@ typecast_repr(PyObject *self)
     rv = PyString_FromFormat("<%s '%s' at %p>",
         Py_TYPE(self)->tp_name, Bytes_AS_STRING(name), self);
 
-    Py_DECREF(name);
+    /* Py_DECREF(name); */
     return rv;
 }
 

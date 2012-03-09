@@ -310,6 +310,7 @@ psyco_Time(PyObject *self, PyObject *args)
     PyObject *tzinfo = NULL;
     int hours, minutes=0;
     double micro, second=0.0;
+	int s=0, u=0;
 
     PyObject* obj = NULL;
 
@@ -317,15 +318,16 @@ psyco_Time(PyObject *self, PyObject *args)
                           &tzinfo))
         return NULL;
 
-    micro = (second - floor(second)) * 1000000.0;
-    second = floor(second);
+	/* NOCOMMIT */
+    micro = 0;
+    second = 0;
 
     if (tzinfo == NULL)
        obj = PyObject_CallFunction((PyObject*)PyDateTimeAPI->TimeType, "iiii",
-            hours, minutes, (int)second, (int)round(micro));
+            hours, minutes, s, u);
     else
        obj = PyObject_CallFunction((PyObject*)PyDateTimeAPI->TimeType, "iiiiO",
-            hours, minutes, (int)second, (int)round(micro), tzinfo);
+            hours, minutes, s, u, tzinfo);
 
     if (obj) {
         res = PyObject_CallFunction((PyObject *)&pydatetimeType,
@@ -343,20 +345,25 @@ _psyco_Timestamp(int year, int month, int day,
     double micro;
     PyObject *obj;
     PyObject *res = NULL;
+	/* NOCOMMIT */
+	int is;
+	int iu;
 
-    micro = (second - floor(second)) * 1000000.0;
-    second = floor(second);
+	/* NOCOMMIT */
+	/* NOCOMMIT */
+	is = 0;
+	iu = 0;
 
     if (tzinfo == NULL)
+		/* NOCOMMIT */
         obj = PyObject_CallFunction((PyObject*)PyDateTimeAPI->DateTimeType,
             "iiiiiii",
-            year, month, day, hour, minute, (int)second,
-            (int)round(micro));
+            year, month, day, hour, minute, is, iu);
     else
+		/* NOCOMMIT */
         obj = PyObject_CallFunction((PyObject*)PyDateTimeAPI->DateTimeType,
             "iiiiiiiO",
-            year, month, day, hour, minute, (int)second,
-            (int)round(micro), tzinfo);
+            year, month, day, hour, minute, is, iu);
 
     if (obj) {
         res = PyObject_CallFunction((PyObject *)&pydatetimeType,
@@ -393,7 +400,8 @@ psyco_DateFromTicks(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "d", &ticks))
         return NULL;
 
-    t = (time_t)floor(ticks);
+	/* NOCOMMIT */
+    t = 0;
     if (localtime_r(&t, &tm)) {
         args = Py_BuildValue("iii", tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday);
         if (args) {
@@ -419,11 +427,12 @@ psyco_TimeFromTicks(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args,"d", &ticks))
         return NULL;
 
-    t = (time_t)floor(ticks);
-    ticks -= (double)t;
+	/* NOCOMMIT */
+    t = 0;
+    ticks = 0;
     if (localtime_r(&t, &tm)) {
-        args = Py_BuildValue("iid", tm.tm_hour, tm.tm_min,
-                          (double)tm.tm_sec + ticks);
+		double s = 0;
+        args = Py_BuildValue("iid", tm.tm_hour, tm.tm_min, s);
         if (args) {
             res = psyco_Time(self, args);
             Py_DECREF(args);
@@ -447,12 +456,14 @@ psyco_TimestampFromTicks(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "d", &ticks))
         return NULL;
 
-    t = (time_t)floor(ticks);
-    ticks -= (double)t;
+	/* NOCOMMIT */
+    t = 0;
+    ticks =0;
     if (localtime_r(&t, &tm)) {
+		double s = 0;
         res = _psyco_Timestamp(
             tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-            tm.tm_hour, tm.tm_min, (double)tm.tm_sec + ticks,
+            tm.tm_hour, tm.tm_min, s,
             pyPsycopgTzLOCAL);
     }
 	else {

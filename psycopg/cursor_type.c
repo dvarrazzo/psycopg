@@ -1357,9 +1357,14 @@ psyco_curs_copy_from(cursorObject *self, PyObject *args, PyObject *kwargs)
     Py_ssize_t bufsize = DEFAULT_COPYBUFF;
     PyObject *file, *columns = NULL, *res = NULL;
 
+    /* NOCOMMIT */
+    /* if (!PyArg_ParseTupleAndKeywords(args, kwargs, */
+    /*     "O&s|ss" CONV_CODE_PY_SSIZE_T "O", kwlist, */
+    /*     _psyco_curs_has_read_check, &file, &table_name, &sep, &null, &bufsize, */
+    /*     &columns)) */
     if (!PyArg_ParseTupleAndKeywords(args, kwargs,
-        "O&s|ss" CONV_CODE_PY_SSIZE_T "O", kwlist,
-        _psyco_curs_has_read_check, &file, &table_name, &sep, &null, &bufsize,
+        "Os|ss" CONV_CODE_PY_SSIZE_T "O", kwlist,
+        &file, &table_name, &sep, &null, &bufsize,
         &columns))
     {
         return NULL;
@@ -1455,8 +1460,12 @@ psyco_curs_copy_to(cursorObject *self, PyObject *args, PyObject *kwargs)
     const char *table_name;
     PyObject *file, *columns = NULL, *res = NULL;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&s|ssO", kwlist,
-                                     _psyco_curs_has_write_check, &file,
+    /* NOCOMMIT */
+    /* if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O&s|ssO", kwlist, */
+    /*                                  _psyco_curs_has_write_check, &file, */
+    /*                                  &table_name, &sep, &null, &columns)) { */
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Os|ssO", kwlist,
+                                     &file,
                                      &table_name, &sep, &null, &columns)) {
         return NULL;
     }

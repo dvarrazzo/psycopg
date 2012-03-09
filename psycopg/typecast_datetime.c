@@ -139,6 +139,8 @@ typecast_PYDATETIME_cast(const char *str, Py_ssize_t len, PyObject *curs)
 
         tzinfo_factory = ((cursorObject *)curs)->tzinfo_factory;
         if (n >= 5 && tzinfo_factory != Py_None) {
+            /* NOCOMMIT */
+            int tmp = 0;
             /* we have a time zone, calculate minutes and create
                appropriate tzinfo object calling the factory */
             Dprintf("typecast_PYDATETIME_cast: UTC offset = %ds", tz);
@@ -147,8 +149,8 @@ typecast_PYDATETIME_cast(const char *str, Py_ssize_t len, PyObject *curs)
                a whole number of minutes, so truncate the seconds to the
                closest minute. */
             // printf("%d %d %d\n", tz, tzmin, round(tz / 60.0));
-            tzinfo = PyObject_CallFunction(tzinfo_factory, "i",
-                (int)round(tz / 60.0));
+            /* NOCOMMIT */
+            tzinfo = PyObject_CallFunction(tzinfo_factory, "i", tmp);
         } else {
             Py_INCREF(Py_None);
             tzinfo = Py_None;
@@ -194,6 +196,8 @@ typecast_PYTIME_cast(const char *str, Py_ssize_t len, PyObject *curs)
     }
     tzinfo_factory = ((cursorObject *)curs)->tzinfo_factory;
     if (n >= 5 && tzinfo_factory != Py_None) {
+        /* NOCOMMIT */
+        int tmp = 0;
         /* we have a time zone, calculate minutes and create
            appropriate tzinfo object calling the factory */
         Dprintf("typecast_PYTIME_cast: UTC offset = %ds", tz);
@@ -201,8 +205,7 @@ typecast_PYTIME_cast(const char *str, Py_ssize_t len, PyObject *curs)
         /* The datetime module requires that time zone offsets be
            a whole number of minutes, so truncate the seconds to the
            closest minute. */
-        tzinfo = PyObject_CallFunction(tzinfo_factory, "i",
-            (int)round(tz / 60.0));
+        tzinfo = PyObject_CallFunction(tzinfo_factory, "i", tmp);
     } else {
         Py_INCREF(Py_None);
         tzinfo = Py_None;
@@ -225,6 +228,7 @@ typecast_PYINTERVAL_cast(const char *str, Py_ssize_t len, PyObject *curs)
     double v = 0.0, sign = 1.0, denominator = 1.0;
     int part = 0, sec;
     double micro;
+    int u;
 
     if (str == NULL) {Py_INCREF(Py_None); return Py_None;}
 
@@ -239,7 +243,8 @@ typecast_PYINTERVAL_cast(const char *str, Py_ssize_t len, PyObject *curs)
 
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
-            v = v * 10.0 + (double)(*str - '0');
+            /* NOCOMMIT */
+            /* v = v * 10.0 + (double)(*str - '0'); */
             if (part == 6){
                 denominator *= 10;
             }
@@ -317,10 +322,12 @@ typecast_PYINTERVAL_cast(const char *str, Py_ssize_t len, PyObject *curs)
     /* calculates days */
     days += years*365 + months*30;
 
-    micro = (seconds - floor(seconds)) * 1000000.0;
-    sec = (int)floor(seconds);
+    /* NOCOMMIT */
+    micro = 0;
+    sec = 0;
+    u = 0;
     return PyObject_CallFunction((PyObject*)PyDateTimeAPI->DeltaType, "iii",
-                                 days, sec, (int)round(micro));
+                                 days, sec, u);
 }
 
 /* psycopg defaults to using python datetime types */
