@@ -573,6 +573,9 @@ def wait_select(conn):
 
 def _solve_conn_curs(conn_or_curs):
     """Return the connection and a DBAPI cursor from a connection or cursor."""
+    if conn_or_curs is None:
+        raise psycopg2.ProgrammingError("no connection or cursor provided")
+
     if hasattr(conn_or_curs, 'execute'):
         conn = conn_or_curs.connection
         curs = conn.cursor(cursor_factory=_cursor)
@@ -741,7 +744,6 @@ def register_hstore(conn_or_curs, globally=False, unicode=False,
     *oid* parameter, which can be found using a query such as :sql:`SELECT
     'hstore'::regtype::oid`. Analogously you can obtain a value for *array_oid*
     using a query such as :sql:`SELECT 'hstore[]'::regtype::oid`.
-
 
     Note that, when passing a dictionary from Python to the database, both
     strings and unicode keys and values are supported. Dictionaries returned
@@ -967,4 +969,8 @@ def register_composite(name, conn_or_curs, globally=False):
     return caster
 
 
+# expose the json adaptation stuff into the module
+from psycopg2._json import json, Json, register_json, register_default_json
+
 __all__ = filter(lambda k: not k.startswith('_'), locals().keys())
+
