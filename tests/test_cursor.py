@@ -402,7 +402,7 @@ class CursorTests(ConnectingTestCase):
 
     @skip_before_postgres(8, 0)
     def test_scroll_named(self):
-        cur = self.conn.cursor()
+        cur = self.conn.cursor('tmp', scrollable=True)
         cur.execute("select generate_series(0,9)")
         cur.scroll(2)
         self.assertEqual(cur.fetchone(), (2,))
@@ -410,10 +410,38 @@ class CursorTests(ConnectingTestCase):
         self.assertEqual(cur.fetchone(), (5,))
         cur.scroll(2, mode='relative')
         self.assertEqual(cur.fetchone(), (8,))
+        cur.scroll(-1)
+        self.assertEqual(cur.fetchone(), (8,))
+        cur.scroll(-2)
+        self.assertEqual(cur.fetchone(), (7,))
+        cur.scroll(2, mode='absolute')
+        self.assertEqual(cur.fetchone(), (2,))
+
+        # on the boundary
+        cur.scroll(0, mode='absolute')
+        self.assertEqual(cur.fetchone(), (0,))
+        # PG cursor is happy to go to -1: it means (end - 1)
+        self.assertRaises((IndexError, psycopg2.ProgrammingError),
+            cur.scroll, -11, mode='absolute')
+        cur.scroll(0, mode='absolute')
+        self.assertRaises((IndexError, psycopg2.ProgrammingError),
+            cur.scroll, -1)
+
         cur.scroll(9, mode='absolute')
         self.assertEqual(cur.fetchone(), (9,))
+
+        # this is different w.r.t. client-side cursors
+        cur.scroll(10, mode='absolute')
+        self.assertEqual(cur.fetchone(), None)
         self.assertRaises((IndexError, psycopg2.ProgrammingError),
-            cur.scroll, 10, mode='absolute')
+            cur.scroll, 11, mode='absolute')
+
+        cur.scroll(9, mode='absolute')
+        self.assertRaises((IndexError, psycopg2.ProgrammingError),
+            cur.scroll, 2)
+        cur.scroll(10, mode='absolute')
+        self.assertRaises((IndexError, psycopg2.ProgrammingError),
+            cur.scroll, 1)
 
 
 def test_suite():

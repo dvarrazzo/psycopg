@@ -1133,6 +1133,7 @@ psyco_curs_scroll(cursorObject *self, PyObject *args, PyObject *kwargs)
 {
     int value, newpos;
     const char *mode = "relative";
+    int mode_rel;
 
     static char *kwlist[] = {"value", "mode", NULL};
 
@@ -1142,19 +1143,25 @@ psyco_curs_scroll(cursorObject *self, PyObject *args, PyObject *kwargs)
 
     EXC_IF_CURS_CLOSED(self);
 
+    if (0 == strcmp(mode, "relative")) {
+        mode_rel = 1;
+    } else if (0 == strcmp( mode, "absolute")) {
+        mode_rel = 0;
+    } else {
+        /* ugh! this should have been a ValueError */
+        psyco_set_error(ProgrammingError, self,
+            "scroll mode must be 'relative' or 'absolute'");
+        return NULL;
+    }
+
     /* if the cursor is not named we have the full result set and we can do
        our own calculations to scroll; else we just delegate the scrolling
        to the MOVE SQL statement */
+    /* note: we are explicitly forbidding scroll(-1, 'absolute') here:
+     * with named cursor instead this is passed to PG, and the cursor goes
+     * to (end -n) */
     if (self->name == NULL) {
-        if (strcmp(mode, "relative") == 0) {
-            newpos = self->row + value;
-        } else if (strcmp( mode, "absolute") == 0) {
-            newpos = value;
-        } else {
-            psyco_set_error(ProgrammingError, self,
-                "scroll mode must be 'relative' or 'absolute'");
-            return NULL;
-        }
+        newpos = mode_rel ? self->row + value : value;
 
         if (newpos < 0 || newpos >= self->rowcount ) {
             psyco_set_error(ProgrammingError, self,
@@ -1167,19 +1174,46 @@ psyco_curs_scroll(cursorObject *self, PyObject *args, PyObject *kwargs)
 
     else {
         char buffer[128];
+        int moved;
+        int err = 0;
 
         EXC_IF_NO_MARK(self);
         EXC_IF_ASYNC_IN_PROGRESS(self, scroll)
         EXC_IF_TPC_PREPARED(self->conn, scroll);
 
-        if (strcmp(mode, "absolute") == 0) {
-            PyOS_snprintf(buffer, 127, "MOVE ABSOLUTE %d FROM \"%s\"",
-                value, self->name);
-        }
-        else {
-            PyOS_snprintf(buffer, 127, "MOVE %d FROM \"%s\"", value, self->name);
-        }
+        PyOS_snprintf(buffer, 127, "MOVE %s%d FROM \"%s\"",
+            mode_rel ? "" : "ABSOLUTE ", value, self->name);
         if (pq_execute(self, buffer, 0, 0) == -1) return NULL;
+
+        /* check the result is in the boundary */
+        Dprintf("scroll: '%s' -> '%s'", buffer, self->pgstatus);
+        moved = atoi(self->pgstatus + 5);    /* Parse n from "MOVE n" */
+
+        /* MOVE ABSOLUTE returns "MOVE 0" if out of bound,
+         * MOVE (relative) returns "MOVE n" with the no of record the cursor
+         * actually moved, so n < abs(value) if out of bound.
+         *
+         * But there is a sort of special case here: PG records are base 1
+         * while Python is base 0: the MOVE semantics actually works ok
+         * (because it is a FETCH and discard, so it gives the result at the
+         * end of the movement), but in order to go at the first record we have
+         * to actually move out of bound by at least 1. So we allow an oob
+         * of 1 moving backwards, both in relative and absolute modes.  */
+        if (!mode_rel) {
+            err = (value != 0 && moved == 0);
+        } else {
+            if (value >= 0) {
+                err = (moved < value);
+            } else {
+                err = (moved < -value - 1);
+            }
+        }
+        if (err) {
+            psyco_set_error(ProgrammingError, self,
+                             "scroll destination out of bounds");
+            return NULL;
+        }
+
         if (_psyco_curs_prefetch(self) < 0) return NULL;
     }
 
