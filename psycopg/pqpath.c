@@ -1476,8 +1476,11 @@ pq_fetch(cursorObject *curs, int no_result)
     Dprintf("pq_fetch: pgstatus = %s", PQresStatus(pgstatus));
 
     /* backend status message */
-    Py_XDECREF(curs->pgstatus);
-    curs->pgstatus = conn_text_from_chars(curs->conn, PQcmdStatus(curs->pgres));
+    PyMem_Free(curs->pgstatus);
+    curs->pgstatus = NULL;
+    if (0 > psycopg_strdup(&curs->pgstatus, PQcmdStatus(curs->pgres), 0)) {
+        return -1;
+    }
 
     switch(pgstatus) {
 

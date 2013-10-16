@@ -1778,7 +1778,7 @@ static struct PyMemberDef cursorObject_members[] = {
         "The connection where the cursor comes from."},
 #ifdef PSYCOPG_EXTENSIONS
     {"name", T_STRING, OFFSETOF(name), READONLY},
-    {"statusmessage", T_OBJECT, OFFSETOF(pgstatus), READONLY,
+    {"statusmessage", T_STRING, OFFSETOF(pgstatus), READONLY,
         "The return message of the last command."},
     {"query", T_OBJECT, OFFSETOF(query), READONLY,
         "The last query text sent to the backend."},
@@ -1858,7 +1858,6 @@ cursor_clear(cursorObject *self)
 {
     Py_CLEAR(self->conn);
     Py_CLEAR(self->description);
-    Py_CLEAR(self->pgstatus);
     Py_CLEAR(self->casts);
     Py_CLEAR(self->caster);
     Py_CLEAR(self->copyfile);
@@ -1884,6 +1883,7 @@ cursor_dealloc(PyObject* obj)
     cursor_clear(self);
 
     PyMem_Free(self->name);
+    PyMem_Free(self->pgstatus);
 
     CLEARPGRES(self->pgres);
 
@@ -1944,7 +1944,6 @@ cursor_traverse(cursorObject *self, visitproc visit, void *arg)
 {
     Py_VISIT((PyObject *)self->conn);
     Py_VISIT(self->description);
-    Py_VISIT(self->pgstatus);
     Py_VISIT(self->casts);
     Py_VISIT(self->caster);
     Py_VISIT(self->copyfile);

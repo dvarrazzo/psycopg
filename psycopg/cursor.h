@@ -61,7 +61,7 @@ struct cursorObject {
 
     /* postgres connection stuff */
     PGresult   *pgres;     /* result of last query */
-    PyObject   *pgstatus;  /* last message from the server after an execute */
+    char       *pgstatus;  /* last message from the server after an execute */
     Oid         lastoid;   /* last oid from an insert or InvalidOid */
 
     PyObject *casts;       /* an array (tuple) of typecast functions */
