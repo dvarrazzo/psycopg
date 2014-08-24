@@ -4,6 +4,13 @@ Current release
 What's new in psycopg 2.6
 -------------------------
 
+New features:
+
+- A different Python exception is associated with every different sqlstate,
+  allowing fine catching of PostgreSQL errors using the Python try...except
+  syntax.  All the sqlstate-related exceptions are defined in the
+  `psycopg2.exc` module.
+
 Bug fixes:
 
 - Json apapter's `!str()` returns the adapted content instead of the `!repr()`

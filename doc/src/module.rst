@@ -248,6 +248,8 @@ available through the following exceptions:
     trapping them specifically is not required.
 
 
+.. _dbapi-exceptions-tree:
+
 This is the exception inheritance layout:
 
 .. parsed-literal::
@@ -265,6 +267,29 @@ This is the exception inheritance layout:
             \|__ `InternalError`
             \|__ `ProgrammingError`
             \|__ `NotSupportedError`
+
+
+.. extension::
+
+    When a database error has a SQLSTATE errcode attached, Psycopg will
+    actually raise a subclass of the above exception classes.  Every different
+    error code is mapped to a separate exception, allowing fine grained error
+    catching using the normal Python ``try...except`` clause instead of
+    catching any `!DatabaseError` and then looking at its `!errcode` to decide
+    whether to handle it or to re-raise it. For example a function to load
+    data in the database where some records may be duplicate could be like::
+
+        for record in source:
+            try:
+                cur.execute("insert into destination values %s", record)
+            except psycopg2.err.UniqueViolation:
+                continue    # this is expected
+            except psycopg2.err.ClassDataException: # every sqlstate 22xxx
+                raise ValueError("data malformed: %s" % (record,))
+            # other errors will just bubble up
+
+    See the `psycopg2.err` module for more details about the mapping
+    between the database errors and their exceptions.
 
 
 

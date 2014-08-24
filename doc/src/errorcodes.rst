@@ -37,10 +37,12 @@ From PostgreSQL documentation:
     recognize the specific error code can still be able to infer what to do
     from the error class.
 
-.. seealso:: `PostgreSQL Error Codes table`__
+.. seealso:: `PostgreSQL Error Codes table`__.
 
     .. __: http://www.postgresql.org/docs/current/static/errcodes-appendix.html#ERRCODES-TABLE
 
+.. seealso:: the module `psycopg2.err` defines the exception raised after
+    every PostgreSQL error code.
 
 An example of the available constants defined in the module:
 

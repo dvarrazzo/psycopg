@@ -18,9 +18,9 @@ from psycopg2 import _psycopg as imp
 
 
 def lookup(code, _cache={}):
-    """Lookup an error code or class code and return its exception.
+    """Lookup an error code or class code and return its Python exception.
 
-    Raise `KeyError` if the code is not found.
+    Raise `!KeyError` if the code is not found.
     """
     if _cache:
         return _cache[code]

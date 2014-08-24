@@ -75,6 +75,7 @@ env: easy_install
 	mkdir -p $(ENV_BIN)
 	mkdir -p $(ENV_LIB)
 	$(EASY_INSTALL) docutils
+	$(EASY_INSTALL) "pygments>=1.5"
 	$(EASY_INSTALL) sphinx
 
 easy_install: ez_setup
