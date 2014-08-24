@@ -79,7 +79,7 @@ def generate_classes(dc):
         if c not in used:
             used[c] = n
             yield """\
-class %s(psycopg2.Error):
+class %s(psycopg2.DatabaseError):
     pgcode = %r
 """ % (cname(n), c)
 
