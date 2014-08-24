@@ -176,6 +176,37 @@ exit:
 }
 
 
+/* Return the Python exception of the matching sqlstate code
+ *
+ * Read the exception from the psycopg2.err.lookup() function.  If the
+ * code is not found (probably a new code we don't handle yet) fall back to a
+ * basic dbapi exception.
+ *
+ * Resist the urge to cache anything here: on reload or multi-interpreter
+ * environments the classes may change identity and 'except' would miss them.
+ */
+static PyObject *
+exception_from_err_module(const char *sqlstate)
+{
+    PyObject *err = NULL;
+    PyObject *rv = NULL;
+
+    if (!(err = PyImport_ImportModule("psycopg2.err"))) { goto exit; }
+    if (!(rv = PyObject_CallMethod(err, "lookup", "s", sqlstate))) {
+        if (PyErr_ExceptionMatches(PyExc_KeyError)) {
+            PyErr_Clear();
+            rv = exception_from_sqlstate(sqlstate);
+            Py_INCREF(rv);  /* was borrowed */
+        }
+    }
+
+exit:
+    Py_XDECREF(err);
+
+    return rv;
+}
+
+
 /* pq_raise - raise a python exception of the right kind
 
    This function should be called while holding the GIL.
@@ -232,12 +263,13 @@ pq_raise(connectionObject *conn, cursorObject *curs, PGresult **pgres)
     /* Analyze the message and try to deduce the right exception kind
        (only if we got the SQLSTATE from the pgres, obviously) */
     if (code != NULL) {
-        exc = exception_from_sqlstate(code);
+        if (!(exc = exception_from_err_module(code))) { return; }
     }
     else {
         /* Fallback if there is no exception code (reported happening e.g.
          * when the connection is closed). */
         exc = DatabaseError;
+        Py_INCREF(exc);
     }
 
     /* try to remove the initial "ERROR: " part from the postgresql error */
@@ -245,6 +277,7 @@ pq_raise(connectionObject *conn, cursorObject *curs, PGresult **pgres)
     Dprintf("pq_raise: err2=%s", err2);
 
     pyerr = psyco_set_error(exc, curs, err2);
+    Py_DECREF(exc);
 
     if (pyerr && PyObject_TypeCheck(pyerr, &errorType)) {
         errorObject *perr = (errorObject *)pyerr;
