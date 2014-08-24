@@ -294,6 +294,12 @@ class ExceptionsTestCase(ConnectingTestCase):
         self.assertEqual(e.pgcode, e1.pgcode)
         self.assert_(e1.cursor is None)
 
+    def test_err_lookup(self):
+        from psycopg2 import err
+        self.assert_(issubclass(err.lookup('23'), psycopg2.DatabaseError))
+        self.assert_(issubclass(err.lookup('XX002'), psycopg2.InternalError))
+        self.assertRaises(KeyError, err.lookup, 'AEIOU')
+
 
 def test_suite():
     return unittest.TestLoader().loadTestsFromName(__name__)
