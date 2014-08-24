@@ -20,6 +20,8 @@ import os
 import sys
 from operator import itemgetter
 
+from psycopg2._psycopg import _base_from_sqlstate as get_base
+
 def main():
     if len(sys.argv) != 2:
         print >>sys.stderr, "usage: %s /path/to/exc.py" % sys.argv[0]
@@ -78,7 +80,7 @@ def generate_classes(dc):
             used[c] = n
             yield """\
 class %s(psycopg2.Error):
-    code = %r
+    pgcode = %r
 """ % (cname(n), c)
 
         else:
@@ -87,7 +89,6 @@ class %s(psycopg2.Error):
 """ % (cname(n), cname(used[c]))
 
 def generate_exceptions(dc, de):
-    yield """# TODO: fix the proper base exception\n"""
     de = sorted(de.items(), key=itemgetter(1,0))
 
     # map class code to name, the first defined wins
@@ -103,9 +104,9 @@ def generate_exceptions(dc, de):
         if c not in used:
             used[c] = n
             yield """\
-class %s(psycopg2.Error, %s):
-    code = %r
-""" % (cname(n), cname(rdc[c[:2]]), c)
+class %s(%s, imp.%s):
+    pgcode = %r
+""" % (cname(n), cname(rdc[c[:2]]), get_base(c).__name__, c)
 
         else:
             yield """\

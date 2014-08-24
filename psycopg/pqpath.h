@@ -33,6 +33,7 @@
 #define CLEARPGRES(pgres)   do { PQclear(pgres); pgres = NULL; } while (0)
 
 /* exported functions */
+HIDDEN PyObject *psyco_base_from_sqlstate(PyObject *self, PyObject *obj);
 HIDDEN PGresult *pq_get_last_result(connectionObject *conn);
 RAISES_NEG HIDDEN int pq_fetch(cursorObject *curs, int no_result);
 RAISES_NEG HIDDEN int pq_execute(cursorObject *curs, const char *query,

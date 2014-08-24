@@ -26,6 +26,7 @@
 #define PSYCOPG_MODULE
 #include "psycopg/psycopg.h"
 
+#include "psycopg/pqpath.h"
 #include "psycopg/connection.h"
 #include "psycopg/cursor.h"
 #include "psycopg/green.h"
@@ -712,6 +713,9 @@ static PyMethodDef psycopgMethods[] = {
      METH_O, psyco_set_wait_callback_doc},
     {"get_wait_callback",  (PyCFunction)psyco_get_wait_callback,
      METH_NOARGS, psyco_get_wait_callback_doc},
+
+    {"_base_from_sqlstate",  (PyCFunction)psyco_base_from_sqlstate,
+     METH_O, "Base exception class from sqlstate"},
 
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };

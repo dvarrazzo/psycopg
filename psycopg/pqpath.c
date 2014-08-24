@@ -142,6 +142,40 @@ exception_from_sqlstate(const char *sqlstate)
     return DatabaseError;
 }
 
+/* Thin wrapper to return exception_from_sqlstate results to Python */
+PyObject *
+psyco_base_from_sqlstate(PyObject *self, PyObject *obj)
+{
+    PyObject *b = NULL;
+    PyObject *rv = NULL;
+
+    if (!Text_Check(obj)) {
+        PyErr_Format(PyExc_TypeError,
+            "expected string, got %s instead",
+            Py_TYPE(obj)->tp_name);
+        goto exit;
+    }
+
+    Py_INCREF(obj);
+    if (!(b = psycopg_ensure_bytes(obj))) {
+        goto exit;
+    }
+
+    if (Bytes_GET_SIZE(b) < 5) {
+        PyErr_SetString(PyExc_ValueError, "at least 5 chars expected");
+        goto exit;
+    }
+
+    rv = exception_from_sqlstate(Bytes_AS_STRING(b));
+    Py_INCREF(rv);  /* was borrowed */
+
+exit:
+    Py_XDECREF(b);
+
+    return rv;
+}
+
+
 /* pq_raise - raise a python exception of the right kind
 
    This function should be called while holding the GIL.
