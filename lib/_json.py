@@ -29,8 +29,8 @@ extensions importing register_json from extras.
 
 import sys
 
-from psycopg2._psycopg import ISQLQuote, QuotedString
-from psycopg2._psycopg import new_type, new_array_type, register_type
+from ._psycopg import ISQLQuote, QuotedString
+from ._psycopg import new_type, new_array_type, register_type
 
 
 # import the best json implementation available
@@ -182,8 +182,8 @@ def _create_json_typecasters(oid, array_oid, loads=None, name='JSON'):
 
 def _get_json_oids(conn_or_curs, name='json'):
     # lazy imports
-    from psycopg2.extensions import STATUS_IN_TRANSACTION
-    from psycopg2.extras import _solve_conn_curs
+    from .extensions import STATUS_IN_TRANSACTION
+    from .extras import _solve_conn_curs
 
     conn, curs = _solve_conn_curs(conn_or_curs)
 

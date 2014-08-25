@@ -32,38 +32,38 @@ This module holds all the extensions to the DBAPI-2.0 provided by psycopg.
 # FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
 # License for more details.
 
-from psycopg2._psycopg import UNICODE, INTEGER, LONGINTEGER, BOOLEAN, FLOAT
-from psycopg2._psycopg import TIME, DATE, INTERVAL, DECIMAL
-from psycopg2._psycopg import BINARYARRAY, BOOLEANARRAY, DATEARRAY, DATETIMEARRAY
-from psycopg2._psycopg import DECIMALARRAY, FLOATARRAY, INTEGERARRAY, INTERVALARRAY
-from psycopg2._psycopg import LONGINTEGERARRAY, ROWIDARRAY, STRINGARRAY, TIMEARRAY
-from psycopg2._psycopg import UNICODEARRAY
+from ._psycopg import UNICODE, INTEGER, LONGINTEGER, BOOLEAN, FLOAT
+from ._psycopg import TIME, DATE, INTERVAL, DECIMAL
+from ._psycopg import BINARYARRAY, BOOLEANARRAY, DATEARRAY, DATETIMEARRAY
+from ._psycopg import DECIMALARRAY, FLOATARRAY, INTEGERARRAY, INTERVALARRAY
+from ._psycopg import LONGINTEGERARRAY, ROWIDARRAY, STRINGARRAY, TIMEARRAY
+from ._psycopg import UNICODEARRAY
 
-from psycopg2._psycopg import Binary, Boolean, Int, Float, QuotedString, AsIs
+from ._psycopg import Binary, Boolean, Int, Float, QuotedString, AsIs
 try:
-    from psycopg2._psycopg import MXDATE, MXDATETIME, MXINTERVAL, MXTIME
-    from psycopg2._psycopg import MXDATEARRAY, MXDATETIMEARRAY, MXINTERVALARRAY, MXTIMEARRAY
-    from psycopg2._psycopg import DateFromMx, TimeFromMx, TimestampFromMx
-    from psycopg2._psycopg import IntervalFromMx
+    from ._psycopg import MXDATE, MXDATETIME, MXINTERVAL, MXTIME
+    from ._psycopg import MXDATEARRAY, MXDATETIMEARRAY, MXINTERVALARRAY, MXTIMEARRAY
+    from ._psycopg import DateFromMx, TimeFromMx, TimestampFromMx
+    from ._psycopg import IntervalFromMx
 except ImportError:
     pass
 
 try:
-    from psycopg2._psycopg import PYDATE, PYDATETIME, PYINTERVAL, PYTIME
-    from psycopg2._psycopg import PYDATEARRAY, PYDATETIMEARRAY, PYINTERVALARRAY, PYTIMEARRAY
-    from psycopg2._psycopg import DateFromPy, TimeFromPy, TimestampFromPy
-    from psycopg2._psycopg import IntervalFromPy
+    from ._psycopg import PYDATE, PYDATETIME, PYINTERVAL, PYTIME
+    from ._psycopg import PYDATEARRAY, PYDATETIMEARRAY, PYINTERVALARRAY, PYTIMEARRAY
+    from ._psycopg import DateFromPy, TimeFromPy, TimestampFromPy
+    from ._psycopg import IntervalFromPy
 except ImportError:
     pass
 
-from psycopg2._psycopg import adapt, adapters, encodings, connection, cursor, lobject, Xid
-from psycopg2._psycopg import string_types, binary_types, new_type, new_array_type, register_type
-from psycopg2._psycopg import ISQLQuote, Notify, Diagnostics
+from ._psycopg import adapt, adapters, encodings, connection, cursor, lobject, Xid
+from ._psycopg import string_types, binary_types, new_type, new_array_type, register_type
+from ._psycopg import ISQLQuote, Notify, Diagnostics
 
-from psycopg2._psycopg import QueryCanceledError, TransactionRollbackError
+from ._psycopg import QueryCanceledError, TransactionRollbackError
 
 try:
-    from psycopg2._psycopg import set_wait_callback, get_wait_callback
+    from ._psycopg import set_wait_callback, get_wait_callback
 except ImportError:
     pass
 
@@ -152,7 +152,7 @@ class NoneAdapter(object):
 
 
 # Create default json typecasters for PostgreSQL 9.2 oids
-from psycopg2._json import register_default_json, register_default_jsonb
+from ._json import register_default_json, register_default_jsonb
 
 try:
     JSON, JSONARRAY = register_default_json()
@@ -164,7 +164,7 @@ del register_default_json, register_default_jsonb
 
 
 # Create default Range typecasters
-from psycopg2. _range import Range
+from . _range import Range
 del Range
 
 

@@ -26,9 +26,9 @@
 
 import re
 
-from psycopg2._psycopg import ProgrammingError, InterfaceError
-from psycopg2.extensions import ISQLQuote, adapt, register_adapter, b
-from psycopg2.extensions import new_type, new_array_type, register_type
+from ._psycopg import ProgrammingError, InterfaceError
+from .extensions import ISQLQuote, adapt, register_adapter, b
+from .extensions import new_type, new_array_type, register_type
 
 class Range(object):
     """Python representation for a PostgreSQL |range|_ type.
@@ -312,8 +312,8 @@ class RangeCaster(object):
 
         Raise `ProgrammingError` if the type is not found.
         """
-        from psycopg2.extensions import STATUS_IN_TRANSACTION
-        from psycopg2.extras import _solve_conn_curs
+        from .extensions import STATUS_IN_TRANSACTION
+        from .extras import _solve_conn_curs
         conn, curs = _solve_conn_curs(conn_or_curs)
 
         if conn.server_version < 90200:

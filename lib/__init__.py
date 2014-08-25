@@ -47,24 +47,24 @@ Homepage: http://initd.org/projects/psycopg2
 
 # Import the DBAPI-2.0 stuff into top-level module.
 
-from psycopg2._psycopg import BINARY, NUMBER, STRING, DATETIME, ROWID
+from ._psycopg import BINARY, NUMBER, STRING, DATETIME, ROWID
 
-from psycopg2._psycopg import Binary, Date, Time, Timestamp
-from psycopg2._psycopg import DateFromTicks, TimeFromTicks, TimestampFromTicks
+from ._psycopg import Binary, Date, Time, Timestamp
+from ._psycopg import DateFromTicks, TimeFromTicks, TimestampFromTicks
 
-from psycopg2._psycopg import Error, Warning, DataError, DatabaseError, ProgrammingError
-from psycopg2._psycopg import IntegrityError, InterfaceError, InternalError
-from psycopg2._psycopg import NotSupportedError, OperationalError
+from ._psycopg import Error, Warning, DataError, DatabaseError, ProgrammingError
+from ._psycopg import IntegrityError, InterfaceError, InternalError
+from ._psycopg import NotSupportedError, OperationalError
 
-from psycopg2._psycopg import _connect, apilevel, threadsafety, paramstyle
-from psycopg2._psycopg import __version__
+from ._psycopg import _connect, apilevel, threadsafety, paramstyle
+from ._psycopg import __version__
 
-from psycopg2 import tz
+from . import tz
 
 
 # Register default adapters.
 
-import psycopg2.extensions as _ext
+from . import extensions as _ext
 _ext.register_adapter(tuple, _ext.SQL_IN)
 _ext.register_adapter(type(None), _ext.NoneAdapter)
 
@@ -76,7 +76,7 @@ try:
 except ImportError:
     pass
 else:
-    from psycopg2._psycopg import Decimal as Adapter
+    from ._psycopg import Decimal as Adapter
     _ext.register_adapter(Decimal, Adapter)
     del Decimal, Adapter
 

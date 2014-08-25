@@ -29,8 +29,8 @@ old code while porting to psycopg 2. Import it as follows::
 # License for more details.
 
 import _psycopg as _2psycopg
-from psycopg2.extensions import cursor as _2cursor
-from psycopg2.extensions import connection as _2connection
+from .extensions import cursor as _2cursor
+from .extensions import connection as _2connection
 
 from psycopg2 import *
 import psycopg2.extensions as _ext
