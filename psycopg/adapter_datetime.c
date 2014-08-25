@@ -389,9 +389,9 @@ psyco_DateFromTicks(PyObject *self, PyObject *args)
             Py_DECREF(args);
         }
     }
-	else {
-		PyErr_SetString(InterfaceError, "failed localtime call");
-	}
+    else {
+        PyErr_SetString(InterfaceError, "failed localtime call");
+    }
 
     return res;
 }
@@ -417,9 +417,9 @@ psyco_TimeFromTicks(PyObject *self, PyObject *args)
             Py_DECREF(args);
         }
     }
-	else {
-		PyErr_SetString(InterfaceError, "failed localtime call");
-	}
+    else {
+        PyErr_SetString(InterfaceError, "failed localtime call");
+    }
 
     return res;
 }
@@ -444,7 +444,7 @@ psyco_TimestampFromTicks(PyObject *self, PyObject *args)
     t = (time_t)floor(ticks);
     ticks -= (double)t;
     if (!localtime_r(&t, &tm)) {
-		PyErr_SetString(InterfaceError, "failed localtime call");
+        PyErr_SetString(InterfaceError, "failed localtime call");
         goto exit;
     }
 
