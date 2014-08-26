@@ -60,6 +60,7 @@ from psycopg2._psycopg import _connect, apilevel, threadsafety, paramstyle
 from psycopg2._psycopg import __version__
 
 from psycopg2 import tz
+from psycopg2 import err
 
 
 # Register default adapters.
