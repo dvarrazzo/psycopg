@@ -458,8 +458,6 @@ class InFailedSqlTransaction(ClassInvalidTransactionState, imp.InternalError):
 class InvalidSqlStatementName(ClassInvalidSqlStatementName, imp.OperationalError):
     pgcode = '26000'
 
-UndefinedPstatement = InvalidSqlStatementName
-
 class TriggeredDataChangeViolation(ClassTriggeredDataChangeViolation, imp.OperationalError):
     pgcode = '27000'
 
@@ -486,8 +484,6 @@ class FunctionExecutedNoReturnStatement(ClassSqlRoutineException, imp.InternalEr
 
 class InvalidCursorName(ClassInvalidCursorName, imp.OperationalError):
     pgcode = '34000'
-
-UndefinedCursor = InvalidCursorName
 
 class ExternalRoutineException(ClassExternalRoutineException, imp.InternalError):
     pgcode = '38000'
@@ -528,12 +524,8 @@ class InvalidSavepointSpecification(ClassSavepointException, imp.InternalError):
 class InvalidCatalogName(ClassInvalidCatalogName, imp.ProgrammingError):
     pgcode = '3D000'
 
-UndefinedDatabase = InvalidCatalogName
-
 class InvalidSchemaName(ClassInvalidSchemaName, imp.ProgrammingError):
     pgcode = '3F000'
-
-UndefinedSchema = InvalidSchemaName
 
 class TransactionRollback(ClassTransactionRollback, imp.TransactionRollbackError):
     pgcode = '40000'
