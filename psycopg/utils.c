@@ -124,6 +124,58 @@ psycopg_escape_identifier_easy(const char *from, Py_ssize_t len)
     return rv;
 }
 
+PyObject *
+psycopg_escape_conninfo(PyObject *param)
+{
+    PyObject *res = NULL;
+    Py_ssize_t len;
+    int space = 0;
+    char *str, *esc = NULL, *p, *q;
+
+    if (PyString_CheckExact(param)) {
+        Py_INCREF(param);
+    } else {
+        if (!(param = PyObject_Str(param))) { goto exit; }
+    }
+    len = PyString_GET_SIZE(param);
+    /* passing NULL for plen checks for NIL bytes and errors out */
+    if (PyString_AsStringAndSize(param, &str, NULL) < 0) { goto exit; }
+
+    if (!(esc = PyMem_Malloc(len*2 + 3))) { goto exit; }
+
+    /* check for any whitespace or empty string */
+    if (*str) {
+        for (p = str; *p; p++) {
+            if (isspace(*p)) {
+                space = 1;
+                break;
+            }
+        }
+    } else {
+        /* empty string: produce '' */
+        space = 1;
+    }
+
+    q = esc;
+    if (space) { *(q++) = '\''; }
+    /* scan and copy */
+    for (p = str; *p; ) {
+        if (*p == '\'' || *p == '\\')
+            *(q++) = '\\';
+        *(q++) = *(p++);
+    }
+    if (space) { *(q++) = '\''; }
+    *q = '\0';
+
+    res = PyString_FromStringAndSize(esc, q - esc);
+
+exit:
+    PyMem_Free(esc);
+    Py_XDECREF(param);
+
+    return res;
+}
+
 /* Duplicate a string.
  *
  * Allocate a new buffer on the Python heap containing the new string.

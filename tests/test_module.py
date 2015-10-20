@@ -34,33 +34,33 @@ import psycopg2
 class ConnectTestCase(unittest.TestCase):
     def setUp(self):
         self.args = None
-        def conect_stub(dsn, connection_factory=None, async=False):
-            self.args = (dsn, connection_factory, async)
 
-        self._connect_orig = psycopg2._connect
-        psycopg2._connect = conect_stub
+        class connection(psycopg2.connection):
+            def setup(conn, dsn=None, async=False, cursor_factory=None):
+                self.args = [dsn, async, cursor_factory]
+
+        self._connection_orig = psycopg2.connection
+        psycopg2.connection = connection
 
     def tearDown(self):
-        psycopg2._connect = self._connect_orig
+        psycopg2.connection = self._connection_orig
 
     def test_there_has_to_be_something(self):
         self.assertRaises(TypeError, psycopg2.connect)
-        self.assertRaises(TypeError, psycopg2.connect,
-            connection_factory=lambda dsn, async=False: None)
         self.assertRaises(TypeError, psycopg2.connect,
             async=True)
 
     def test_no_keywords(self):
         psycopg2.connect('')
         self.assertEqual(self.args[0], '')
-        self.assertEqual(self.args[1], None)
-        self.assertEqual(self.args[2], False)
+        self.assertEqual(self.args[1], False)
+        self.assertEqual(self.args[2], None)
 
     def test_dsn(self):
         psycopg2.connect('dbname=blah x=y')
         self.assertEqual(self.args[0], 'dbname=blah x=y')
-        self.assertEqual(self.args[1], None)
-        self.assertEqual(self.args[2], False)
+        self.assertEqual(self.args[1], False)
+        self.assertEqual(self.args[2], None)
 
     def test_supported_keywords(self):
         psycopg2.connect(database='foo')
@@ -87,33 +87,45 @@ class ConnectTestCase(unittest.TestCase):
         self.assertEqual(self.args[0], 'foo=bar')
 
     def test_factory(self):
-        def f(dsn, async=False):
-            pass
+        def f(dsn, async=False, **kwargs):
+            self.factory_called = True
+            return psycopg2.connection(dsn, async, **kwargs)
 
+        self.factory_called = False
         psycopg2.connect(database='foo', bar='baz', connection_factory=f)
-        self.assertEqual(self.args[0], 'dbname=foo bar=baz')
-        self.assertEqual(self.args[1], f)
-        self.assertEqual(self.args[2], False)
+        dsn = " %s " % self.args[0]
+        self.assertIn(" dbname=foo ", dsn)
+        self.assertIn(" bar=baz ", dsn)
+        self.assertEqual(self.args[1], False)
+        self.assert_(self.factory_called)
 
+        self.factory_called = False
         psycopg2.connect("dbname=foo bar=baz", connection_factory=f)
-        self.assertEqual(self.args[0], 'dbname=foo bar=baz')
-        self.assertEqual(self.args[1], f)
-        self.assertEqual(self.args[2], False)
+        dsn = " %s " % self.args[0]
+        self.assertIn(" dbname=foo ", dsn)
+        self.assertIn(" bar=baz ", dsn)
+        self.assertEqual(self.args[1], False)
+        self.assert_(self.factory_called)
 
     def test_async(self):
         psycopg2.connect(database='foo', bar='baz', async=1)
-        self.assertEqual(self.args[0], 'dbname=foo bar=baz')
-        self.assertEqual(self.args[1], None)
-        self.assert_(self.args[2])
+        dsn = " %s " % self.args[0]
+        self.assertIn(" dbname=foo ", dsn)
+        self.assertIn(" bar=baz ", dsn)
+        self.assert_(self.args[1])
 
         psycopg2.connect("dbname=foo bar=baz", async=True)
-        self.assertEqual(self.args[0], 'dbname=foo bar=baz')
-        self.assertEqual(self.args[1], None)
-        self.assert_(self.args[2])
+        dsn = " %s " % self.args[0]
+        self.assertIn(" dbname=foo ", dsn)
+        self.assertIn(" bar=baz ", dsn)
+        self.assert_(self.args[1])
 
     def test_empty_param(self):
         psycopg2.connect(database='sony', password='')
-        self.assertEqual(self.args[0], "dbname=sony password=''")
+        dsn = " %s " % self.args[0]
+        self.assert_(" dbname=sony " in dsn and " password='' " in dsn)
+        self.assertIn(" dbname=sony ", dsn)
+        self.assertIn(" password='' ", dsn)
 
     def test_escape(self):
         psycopg2.connect(database='hello world')

@@ -808,6 +808,75 @@ psyco_conn_get_backend_pid(connectionObject *self)
     return PyInt_FromLong((long)PQbackendPID(self->pgconn));
 }
 
+/* setup the connection */
+#define psyco_conn_setup_doc \
+"setup() -- Setup the connection."
+
+static PyObject *
+psyco_conn_setup(connectionObject *self, PyObject *args, PyObject *kwargs)
+{
+    char *dsn;
+    long int async = 0;
+    PyObject *cursor_factory = NULL;
+    char *pos;
+    PyObject *res = NULL;
+
+    static char *kwlist[] = {"dsn", "async", "cursor_factory", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|lO", kwlist,
+                                     &dsn, &async, &cursor_factory)) {
+        goto exit;
+    }
+
+    Dprintf("psyco_conn_setup: init connection object at %p, "
+	    "async %ld, refcnt = " FORMAT_CODE_PY_SSIZE_T,
+            self, async, Py_REFCNT(self)
+      );
+
+    if (self->dsn) {
+        PyErr_SetString(ProgrammingError, "setup called twice");
+        goto exit;
+    }
+    if (0 > psycopg_strdup(&self->dsn, dsn, 0)) { goto exit; }
+    if (!(self->notice_list = PyList_New(0))) { goto exit; }
+    if (!(self->notifies = PyList_New(0))) { goto exit; }
+    self->async = async;
+    self->status = CONN_STATUS_SETUP;
+    self->async_status = ASYNC_DONE;
+    Py_XINCREF(cursor_factory);
+    self->cursor_factory = cursor_factory;
+    if (!(self->string_types = PyDict_New())) { goto exit; }
+    if (!(self->binary_types = PyDict_New())) { goto exit; }
+    /* other fields have been zeroed by tp_alloc */
+
+    pthread_mutex_init(&(self->lock), NULL);
+
+    if (conn_connect(self, async) != 0) {
+        Dprintf("psyco_conn_setup: FAILED");
+        goto exit;
+    }
+    else {
+        Dprintf("psyco_conn_setup: good connection object at %p, refcnt = "
+            FORMAT_CODE_PY_SSIZE_T,
+            self, Py_REFCNT(self)
+          );
+        res = Py_None;
+        Py_INCREF(res);
+    }
+
+exit:
+    /* here we obfuscate the password even if there was a connection error */
+    if (self->dsn) {
+        pos = strstr(self->dsn, "password");
+        if (pos != NULL) {
+            for (pos = pos+9 ; *pos != '\0' && *pos != ' '; pos++)
+                *pos = 'x';
+        }
+    }
+
+    return res;
+}
+
 /* reset the currect connection */
 
 #define psyco_conn_reset_doc \
@@ -981,6 +1050,8 @@ static struct PyMethodDef connectionObject_methods[] = {
      METH_NOARGS, psyco_conn_get_backend_pid_doc},
     {"lobject", (PyCFunction)psyco_conn_lobject,
      METH_VARARGS|METH_KEYWORDS, psyco_conn_lobject_doc},
+    {"setup", (PyCFunction)psyco_conn_setup,
+     METH_VARARGS|METH_KEYWORDS, psyco_conn_setup_doc},
     {"reset", (PyCFunction)psyco_conn_reset,
      METH_NOARGS, psyco_conn_reset_doc},
     {"poll", (PyCFunction)psyco_conn_poll,
@@ -1054,52 +1125,6 @@ static struct PyGetSetDef connectionObject_getsets[] = {
 /* initialization and finalization methods */
 
 static int
-connection_setup(connectionObject *self, const char *dsn, long int async)
-{
-    char *pos;
-    int res = -1;
-
-    Dprintf("connection_setup: init connection object at %p, "
-	    "async %ld, refcnt = " FORMAT_CODE_PY_SSIZE_T,
-            self, async, Py_REFCNT(self)
-      );
-
-    if (0 > psycopg_strdup(&self->dsn, dsn, 0)) { goto exit; }
-    if (!(self->notice_list = PyList_New(0))) { goto exit; }
-    if (!(self->notifies = PyList_New(0))) { goto exit; }
-    self->async = async;
-    self->status = CONN_STATUS_SETUP;
-    self->async_status = ASYNC_DONE;
-    if (!(self->string_types = PyDict_New())) { goto exit; }
-    if (!(self->binary_types = PyDict_New())) { goto exit; }
-    /* other fields have been zeroed by tp_alloc */
-
-    pthread_mutex_init(&(self->lock), NULL);
-
-    if (conn_connect(self, async) != 0) {
-        Dprintf("connection_init: FAILED");
-        goto exit;
-    }
-    else {
-        Dprintf("connection_setup: good connection object at %p, refcnt = "
-            FORMAT_CODE_PY_SSIZE_T,
-            self, Py_REFCNT(self)
-          );
-        res = 0;
-    }
-
-exit:
-    /* here we obfuscate the password even if there was a connection error */
-    pos = strstr(self->dsn, "password");
-    if (pos != NULL) {
-        for (pos = pos+9 ; *pos != '\0' && *pos != ' '; pos++)
-            *pos = 'x';
-    }
-
-    return res;
-}
-
-static int
 connection_clear(connectionObject *self)
 {
     Py_CLEAR(self->tpc_xid);
@@ -1148,16 +1173,109 @@ connection_dealloc(PyObject* obj)
 }
 
 static int
-connection_init(PyObject *obj, PyObject *args, PyObject *kwds)
+connection_init(PyObject *obj, PyObject *args, PyObject *kwargs)
 {
-    const char *dsn;
-    long int async = 0;
-    static char *kwlist[] = {"dsn", "async", NULL};
+    PyObject *dsn = NULL;
+    PyObject *async = NULL;
+    PyObject *cursor_factory = NULL;
+    PyObject *setup = NULL;
+    PyObject *res = NULL;
+    Py_ssize_t nargs = PyTuple_GET_SIZE(args);
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "s|l", kwlist, &dsn, &async))
-        return -1;
+    /* parse and remove all keywords we know, so they are not interpreted as part of DSN */
+    if (kwargs) {
+        if (PyMapping_HasKeyString(kwargs, "dsn")) {
+            dsn = PyMapping_GetItemString(kwargs, "dsn");
+            Py_INCREF(dsn);
+            PyMapping_DelItemString(kwargs, "dsn");
+        }
+        if (PyMapping_HasKeyString(kwargs, "async")) {
+            async = PyMapping_GetItemString(kwargs, "async");
+            Py_INCREF(async);
+            PyMapping_DelItemString(kwargs, "async");
+        }
+        if (PyMapping_HasKeyString(kwargs, "cursor_factory")) {
+            cursor_factory = PyMapping_GetItemString(kwargs, "cursor_factory");
+            Py_INCREF(cursor_factory);
+            PyMapping_DelItemString(kwargs, "cursor_factory");
+        }
+    }
+    if (nargs > 0) {
+        if (!dsn) {
+            dsn = PyTuple_GET_ITEM(args, 0);
+            Py_INCREF(dsn);
+        } else {
+            PyErr_SetString(PyExc_TypeError,
+                            "connection() got multiple values for keyword argument 'dsn'");
+            goto exit;
+        }
+    }
+    if (!dsn) {
+        dsn = Py_None;
+        Py_INCREF(dsn);
+    }
+    if (nargs > 1) {
+        if (!async) {
+            async = PyTuple_GET_ITEM(args, 1);
+            Py_INCREF(async);
+        } else {
+            PyErr_SetString(PyExc_TypeError,
+                            "connection() got multiple values for keyword argument 'async'");
+            goto exit;
+        }
+    }
+    if (!async) {
+        async = Py_False;
+        Py_INCREF(async);
+    }
+    if (nargs > 2) {
+        if (!cursor_factory) {
+            cursor_factory = PyTuple_GET_ITEM(args, 2);
+            Py_INCREF(cursor_factory);
+        } else {
+            PyErr_SetString(PyExc_TypeError,
+                            "connection() got multiple values for keyword argument 'cursor_factory'");
+            goto exit;
+        }
+    }
+    if (!cursor_factory) {
+        cursor_factory = Py_None;
+        Py_INCREF(cursor_factory);
+    }
+    if (nargs > 3) {
+        PyErr_Format(PyExc_TypeError,
+                     "connection() takes at most 3 arguments (%d given)", (int)nargs);
+        goto exit;
+    }
 
-    return connection_setup((connectionObject *)obj, dsn, async);
+    if (kwargs && PyMapping_Size(kwargs) > 0) {
+        if (dsn == Py_None) {
+            Py_DECREF(dsn);
+            if (!(dsn = psyco_make_dsn(NULL, NULL, kwargs))) { goto exit; }
+        } else {
+            PyErr_SetString(PyExc_TypeError, "both dsn and parameters given");
+            goto exit;
+        }
+    } else {
+        if (dsn == Py_None) {
+            PyErr_SetString(PyExc_TypeError, "missing dsn and no parameters");
+            goto exit;
+        }
+        /* already incref'd above */
+        if (!(dsn = psycopg_ensure_bytes(dsn))) { goto exit; }
+    }
+
+    if (!(setup = Text_FromUTF8("setup"))) { goto exit; }
+    res = PyObject_CallMethodObjArgs(obj, setup, dsn, async, cursor_factory, NULL);
+
+exit:
+    Py_XDECREF(dsn);
+    Py_XDECREF(async);
+    Py_XDECREF(cursor_factory);
+    Py_XDECREF(setup);
+    Py_XDECREF(res);
+
+    return res ? 0 : -1;
 }
 
 static PyObject *
@@ -1171,7 +1289,7 @@ connection_repr(connectionObject *self)
 {
     return PyString_FromFormat(
         "<connection object at %p; dsn: '%s', closed: %ld>",
-        self, self->dsn, self->closed);
+        self, self->dsn ? self->dsn : "None", self->closed);
 }
 
 static int

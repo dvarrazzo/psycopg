@@ -70,47 +70,6 @@ HIDDEN PyObject *psyco_null = NULL;
 /* The type of the cursor.description items */
 HIDDEN PyObject *psyco_DescriptionType = NULL;
 
-/** connect module-level function **/
-#define psyco_connect_doc \
-"_connect(dsn, [connection_factory], [async]) -- New database connection.\n\n"
-
-static PyObject *
-psyco_connect(PyObject *self, PyObject *args, PyObject *keywds)
-{
-    PyObject *conn = NULL;
-    PyObject *factory = NULL;
-    const char *dsn = NULL;
-    int async = 0;
-
-    static char *kwlist[] = {"dsn", "connection_factory", "async", NULL};
-
-    if (!PyArg_ParseTupleAndKeywords(args, keywds, "s|Oi", kwlist,
-                                     &dsn, &factory, &async)) {
-        return NULL;
-    }
-
-    Dprintf("psyco_connect: dsn = '%s', async = %d", dsn, async);
-
-    /* allocate connection, fill with errors and return it */
-    if (factory == NULL || factory == Py_None) {
-        factory = (PyObject *)&connectionType;
-    }
-
-    /* Here we are breaking the connection.__init__ interface defined
-     * by psycopg2. So, if not requiring an async conn, avoid passing
-     * the async parameter. */
-    /* TODO: would it be possible to avoid an additional parameter
-     * to the conn constructor? A subclass? (but it would require mixins
-     * to further subclass) Another dsn parameter (but is not really
-     * a connection parameter that can be configured) */
-    if (!async) {
-        conn = PyObject_CallFunction(factory, "s", dsn);
-    } else {
-        conn = PyObject_CallFunction(factory, "si", dsn, async);
-    }
-
-    return conn;
-}
 
 #define psyco_parse_dsn_doc \
 "parse_dsn(dsn) -> dict -- parse a connection string into parameters"
@@ -162,6 +121,83 @@ exit:
     PQconninfoFree(options);    /* safe on null */
     Py_XDECREF(dict);
     Py_XDECREF(dsn);
+
+    return res;
+}
+
+
+#define psyco_make_dsn_doc "make_dsn(**kwargs) -> str"
+
+PyObject *
+psyco_make_dsn(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    Py_ssize_t len, pos;
+    PyObject *res = NULL;
+    PyObject *key, *value;
+    PyObject *dict = NULL;
+    char *str, *p, *q;
+
+    if (args != NULL && (len = PyTuple_Size(args)) > 0) {
+        PyErr_Format(PyExc_TypeError, "make_dsn() takes no arguments (%d given)", (int)len);
+        goto exit;
+    }
+    if (kwargs == NULL) {
+        return PyString_FromString("");
+    }
+
+    if (!(dict = PyDict_New())) { goto exit; }
+
+    len = 0;
+    pos = 0;
+    while (PyDict_Next(kwargs, &pos, &key, &value)) {
+        PyObject *newkey;
+        if (value == NULL || value == Py_None) { continue; }
+        Py_INCREF(key);
+        /* for psycopg_ensure_bytes */
+        if (!(newkey = psycopg_ensure_bytes(key))) { goto exit; }
+        if (strcmp(PyString_AsString(newkey), "database") == 0) {
+            key = PyString_FromString("dbname");
+            Py_DECREF(newkey);
+        } else {
+            key = newkey;
+        }
+        if (!(value = psycopg_escape_conninfo(value))) {
+            Py_DECREF(key);
+            goto exit;
+        }
+        if (PyDict_SetItem(dict, key, value) < 0) {
+            Py_DECREF(key);
+            Py_DECREF(value);
+            goto exit;
+        }
+        len += PyString_GET_SIZE(key) + PyString_GET_SIZE(value) + 2;
+        Py_DECREF(key);
+        Py_DECREF(value);
+    }
+
+    if (!(res = PyString_FromStringAndSize(NULL, len))) { goto exit; }
+    str = PyString_AsString(res);
+
+    p = str;
+    pos = 0;
+    while (PyDict_Next(dict, &pos, &key, &value)) {
+        if (p != str) {
+            *(p++) = ' ';
+        }
+        if (PyString_AsStringAndSize(key, &q, &len) < 0) { goto exit; }
+        strncpy(p, q, len);
+        p += len;
+        *(p++) = '=';
+        if (PyString_AsStringAndSize(value, &q, &len) < 0) { goto exit; }
+        strncpy(p, q, len);
+        p += len;
+    }
+    *p = '\0';
+
+    res = PyString_FromStringAndSize(str, p - str);
+
+exit:
+    Py_XDECREF(dict);
 
     return res;
 }
@@ -819,10 +855,10 @@ error:
 /** method table and module initialization **/
 
 static PyMethodDef psycopgMethods[] = {
-    {"_connect",  (PyCFunction)psyco_connect,
-     METH_VARARGS|METH_KEYWORDS, psyco_connect_doc},
     {"parse_dsn",  (PyCFunction)psyco_parse_dsn,
      METH_VARARGS|METH_KEYWORDS, psyco_parse_dsn_doc},
+    {"make_dsn",  (PyCFunction)psyco_make_dsn,
+     METH_VARARGS|METH_KEYWORDS, psyco_make_dsn_doc},
     {"quote_ident", (PyCFunction)psyco_quote_ident,
      METH_VARARGS|METH_KEYWORDS, psyco_quote_ident_doc},
     {"adapt",  (PyCFunction)psyco_microprotocols_adapt,
