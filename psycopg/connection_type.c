@@ -1183,65 +1183,30 @@ connection_init(PyObject *obj, PyObject *args, PyObject *kwargs)
     Py_ssize_t nargs = PyTuple_GET_SIZE(args);
 
     /* parse and remove all keywords we know, so they are not interpreted as part of DSN */
-    if (kwargs) {
-        if (PyMapping_HasKeyString(kwargs, "dsn")) {
-            dsn = PyMapping_GetItemString(kwargs, "dsn");
-            Py_INCREF(dsn);
-            PyMapping_DelItemString(kwargs, "dsn");
-        }
-        if (PyMapping_HasKeyString(kwargs, "async")) {
-            async = PyMapping_GetItemString(kwargs, "async");
-            Py_INCREF(async);
-            PyMapping_DelItemString(kwargs, "async");
-        }
-        if (PyMapping_HasKeyString(kwargs, "cursor_factory")) {
-            cursor_factory = PyMapping_GetItemString(kwargs, "cursor_factory");
-            Py_INCREF(cursor_factory);
-            PyMapping_DelItemString(kwargs, "cursor_factory");
-        }
+#define PARSE_ARG(pos, name, def) \
+    if (kwargs && PyMapping_HasKeyString(kwargs, #name)) { \
+        name = PyMapping_GetItemString(kwargs, #name); \
+        Py_INCREF(name); \
+        PyMapping_DelItemString(kwargs, #name); \
+    } \
+    if (nargs > pos) { \
+        if (!name) { \
+            name = PyTuple_GET_ITEM(args, pos); \
+            Py_INCREF(name); \
+        } else { \
+            PyErr_SetString(PyExc_TypeError, \
+                            "connection() got multiple values for keyword argument '" #name "'"); \
+            goto exit; \
+        } \
+    } \
+    if (!name) { \
+        name = def; \
+        Py_INCREF(name); \
     }
-    if (nargs > 0) {
-        if (!dsn) {
-            dsn = PyTuple_GET_ITEM(args, 0);
-            Py_INCREF(dsn);
-        } else {
-            PyErr_SetString(PyExc_TypeError,
-                            "connection() got multiple values for keyword argument 'dsn'");
-            goto exit;
-        }
-    }
-    if (!dsn) {
-        dsn = Py_None;
-        Py_INCREF(dsn);
-    }
-    if (nargs > 1) {
-        if (!async) {
-            async = PyTuple_GET_ITEM(args, 1);
-            Py_INCREF(async);
-        } else {
-            PyErr_SetString(PyExc_TypeError,
-                            "connection() got multiple values for keyword argument 'async'");
-            goto exit;
-        }
-    }
-    if (!async) {
-        async = Py_False;
-        Py_INCREF(async);
-    }
-    if (nargs > 2) {
-        if (!cursor_factory) {
-            cursor_factory = PyTuple_GET_ITEM(args, 2);
-            Py_INCREF(cursor_factory);
-        } else {
-            PyErr_SetString(PyExc_TypeError,
-                            "connection() got multiple values for keyword argument 'cursor_factory'");
-            goto exit;
-        }
-    }
-    if (!cursor_factory) {
-        cursor_factory = Py_None;
-        Py_INCREF(cursor_factory);
-    }
+    PARSE_ARG(0, dsn, Py_None)
+    PARSE_ARG(1, async, Py_False)
+    PARSE_ARG(2, cursor_factory, Py_None)
+#undef PARSE_ARG
     if (nargs > 3) {
         PyErr_Format(PyExc_TypeError,
                      "connection() takes at most 3 arguments (%d given)", (int)nargs);
