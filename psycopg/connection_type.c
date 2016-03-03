@@ -1195,7 +1195,8 @@ connection_init(PyObject *obj, PyObject *args, PyObject *kwargs)
             Py_INCREF(name); \
         } else { \
             PyErr_SetString(PyExc_TypeError, \
-                            "connection() got multiple values for keyword argument '" #name "'"); \
+                "connection() got multiple values for keyword argument '" \
+                    #name "'"); \
             goto exit; \
         } \
     } \
@@ -1209,7 +1210,7 @@ connection_init(PyObject *obj, PyObject *args, PyObject *kwargs)
 #undef PARSE_ARG
     if (nargs > 3) {
         PyErr_Format(PyExc_TypeError,
-                     "connection() takes at most 3 arguments (%d given)", (int)nargs);
+            "connection() takes at most 3 arguments (%d given)", (int)nargs);
         goto exit;
     }
 

@@ -126,7 +126,8 @@ exit:
 }
 
 
-#define psyco_make_dsn_doc "make_dsn(**kwargs) -> str"
+#define psyco_make_dsn_doc \
+"make_dsn(**kwargs) -> str -- convert keywords into a connection string"
 
 PyObject *
 psyco_make_dsn(PyObject *self, PyObject *args, PyObject *kwargs)
@@ -152,8 +153,7 @@ psyco_make_dsn(PyObject *self, PyObject *args, PyObject *kwargs)
     while (PyDict_Next(kwargs, &pos, &key, &value)) {
         PyObject *newkey;
         if (value == NULL || value == Py_None) { continue; }
-        Py_INCREF(key);
-        /* for psycopg_ensure_bytes */
+        Py_INCREF(key);     /* for psycopg_ensure_bytes */
         if (!(newkey = psycopg_ensure_bytes(key))) { goto exit; }
         if (strcmp(PyString_AsString(newkey), "database") == 0) {
             key = PyString_FromString("dbname");
