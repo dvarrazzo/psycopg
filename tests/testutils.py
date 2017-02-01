@@ -130,7 +130,7 @@ class ConnectingTestCase(unittest.TestCase):
         import psycopg2
         try:
             conn = self.connect(**kwargs)
-            if conn.async == 1:
+            if conn.async_ == 1:
                 self.wait(conn)
         except psycopg2.OperationalError, e:
             # If pgcode is not set it is a genuine connection error

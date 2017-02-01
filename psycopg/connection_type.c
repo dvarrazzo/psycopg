@@ -1040,6 +1040,8 @@ static struct PyMemberDef connectionObject_members[] = {
         "The current connection string."},
     {"async", T_LONG, offsetof(connectionObject, async), READONLY,
         "True if the connection is asynchronous."},
+    {"async_", T_LONG, offsetof(connectionObject, async), READONLY,
+        "True if the connection is asynchronous."},
     {"status", T_INT,
         offsetof(connectionObject, status), READONLY,
         "The current transaction status."},
