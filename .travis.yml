@@ -15,6 +15,7 @@ python:
 
 install:
   - python setup.py install
+  - sudo apt-get install moreutils
   - sudo scripts/travis_prepare.sh
 
 script:
