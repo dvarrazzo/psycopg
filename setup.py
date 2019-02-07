@@ -603,6 +603,12 @@ ext.append(Extension("psycopg2._psycopg", sources,
                      include_dirs=include_dirs,
                      depends=depends,
                      undef_macros=[]))
+ext.append(Extension("psycopg2.errors",
+                     ['errorsmodule.c'],
+                     define_macros=define_macros,
+                     include_dirs=include_dirs,
+                     depends=['psycopg.h'],
+                     undef_macros=[]))
 
 # Compute the direct download url.
 # Note that the current package installation programs are stupidly intelligent
