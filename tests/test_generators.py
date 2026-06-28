@@ -44,7 +44,8 @@ def test_connect_operationalerror_pgconn(generators, dsn, monkeypatch):
 
 
 @pytest.mark.libpq(">= 17")
-def test_cancel(pgconn, conn, generators):
+@pytest.mark.parametrize("timeout", [0, 5])
+def test_cancel(pgconn, conn, generators, timeout):
     pgconn.send_query_params(b"SELECT pg_sleep($1)", [b"180"])
     while not conn.execute(
         "SELECT count(*) FROM pg_stat_activity"
@@ -55,7 +56,7 @@ def test_cancel(pgconn, conn, generators):
     cancel_conn = pgconn.cancel_conn()
     assert cancel_conn.status != pq.ConnStatus.BAD
     cancel_conn.start()
-    gen = generators.cancel(cancel_conn, timeout=5)
+    gen = generators.cancel(cancel_conn, timeout=timeout)
     waiting.wait_conn(gen)
     assert cancel_conn.status == pq.ConnStatus.OK
 

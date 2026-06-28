@@ -58,24 +58,26 @@ async def test_concurrent_execution(aconn_cls, dsn):
     assert time.time() - t0 < 0.8, "something broken in concurrency"
 
 
-async def canceller(aconn, errors):
+async def canceller(aconn, errors, timeout=None):
+    kwargs = {"timeout": timeout} if timeout is not None else {}
     try:
         await asyncio.sleep(0.5)
-        await aconn.cancel_safe(timeout=5)
+        await aconn.cancel_safe(**kwargs)
     except Exception as exc:
         errors.append(exc)
 
 
 @pytest.mark.slow
 @pytest.mark.crdb_skip("cancel")
-async def test_cancel(aconn):
+@pytest.mark.parametrize("timeout", [None, 5])
+async def test_cancel(aconn, timeout):
     async def worker():
         cur = aconn.cursor()
         with pytest.raises(e.QueryCanceled):
             await cur.execute("select pg_sleep(2)")
 
     errors: list[Exception] = []
-    workers = [worker(), canceller(aconn, errors)]
+    workers = [worker(), canceller(aconn, errors, timeout=timeout)]
 
     t0 = time.time()
     await asyncio.gather(*workers)
@@ -93,7 +95,8 @@ async def test_cancel(aconn):
 
 @pytest.mark.slow
 @pytest.mark.crdb_skip("cancel")
-async def test_cancel_stream(aconn):
+@pytest.mark.parametrize("timeout", [None, 5])
+async def test_cancel_stream(aconn, timeout):
     async def worker():
         cur = aconn.cursor()
         with pytest.raises(e.QueryCanceled):
@@ -101,7 +104,7 @@ async def test_cancel_stream(aconn):
                 pass
 
     errors: list[Exception] = []
-    workers = [worker(), canceller(aconn, errors)]
+    workers = [worker(), canceller(aconn, errors, timeout=timeout)]
 
     t0 = time.time()
     await asyncio.gather(*workers)
