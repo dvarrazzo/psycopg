@@ -112,20 +112,16 @@ def _connect(conninfo: str, *, timeout: float = 0.0) -> PQGenConn[PGconn]:
 
 def _cancel(cancel_conn: PGcancelConn, *, timeout: float = 0.0) -> PQGenConn[None]:
     deadline = monotonic() + timeout if timeout else 0.0
-    wait = WAIT_W
-
     while True:
-        socket = cancel_conn.socket
-        while not (yield socket, wait):
-            if deadline and monotonic() > deadline:
-                raise e.CancellationTimeout("cancellation timeout expired")
+        if deadline and monotonic() > deadline:
+            raise e.CancellationTimeout("cancellation timeout expired")
 
         if (status := cancel_conn.poll()) == POLL_OK:
             break
         elif status == POLL_READING:
-            wait = WAIT_R
+            yield cancel_conn.socket, WAIT_R
         elif status == POLL_WRITING:
-            wait = WAIT_W
+            yield cancel_conn.socket, WAIT_W
         elif status == POLL_FAILED:
             raise e.OperationalError(
                 f"cancellation failed: {cancel_conn.get_error_message()}"

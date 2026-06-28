@@ -89,27 +89,21 @@ def cancel(pq.PGcancelConn cancel_conn, *, timeout: float = 0.0) -> PQGenConn[No
     cdef libpq.PGcancelConn *pgcancelconn_ptr = cancel_conn.pgcancelconn_ptr
     cdef int status
     cdef double deadline = 0.0
-    wait = WAIT_W
-    cdef int socket
 
     if timeout:
         deadline = monotonic() + timeout
 
     while True:
-        with nogil:
-            socket = libpq.PQcancelSocket(pgcancelconn_ptr)
-        while not (yield socket, wait):
-            if deadline and monotonic() > deadline:
-                raise e.CancellationTimeout("cancellation timeout expired")
+        if deadline and monotonic() > deadline:
+            raise e.CancellationTimeout("cancellation timeout expired")
         with nogil:
             status = libpq.PQcancelPoll(pgcancelconn_ptr)
-
         if status == libpq.PGRES_POLLING_OK:
             break
         elif status == libpq.PGRES_POLLING_READING:
-            wait = WAIT_R
+            yield libpq.PQcancelSocket(pgcancelconn_ptr), WAIT_R
         elif status == libpq.PGRES_POLLING_WRITING:
-            wait = WAIT_W
+            yield libpq.PQcancelSocket(pgcancelconn_ptr), WAIT_W
         elif status == libpq.PGRES_POLLING_FAILED:
             raise e.OperationalError(
                 f"cancellation failed: {cancel_conn.get_error_message()}"
