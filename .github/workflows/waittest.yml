@@ -1,0 +1,291 @@
+name: Wait benchmark
+
+# TEMPORARY: measure the performance of the async wait functions on every
+# platform we support, comparing the current implementation with the one
+# before #1331 (tests/scripts/wait_async_ebf8d9d4.py).
+#
+# This workflow, that module and the tools/ci/ci_waittest.sh script are
+# scaffolding to review #1331: none of them is meant to reach master.
+#
+# The results of every job are uploaded as an artifact and merged into a
+# single `waittest-results` one, because they are laborious to read from the
+# job logs.
+
+on:
+  push:
+    # The workflow only exists on the branch of the optimisation, so this
+    # doesn't add runs anywhere else.
+    branches:
+      - "**"
+    tags-ignore:
+      - "**"
+  workflow_dispatch:
+
+concurrency:
+  # Cancel older requests of the same workflow in the same branch.
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+
+  linux:  # {{{
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Every version, no sampling: the Python version is the main
+          # variable of this benchmark, because until 3.11 `wait_for()` wraps
+          # every wait in a Task, which is a good part of what the new
+          # implementation avoids. A missing version is a hole where a trend
+          # can't be told apart from an outlier.
+          - {impl: python, python: "3.10"}
+          - {impl: python, python: "3.11"}
+          - {impl: python, python: "3.12"}
+          - {impl: python, python: "3.13"}
+          - {impl: python, python: "3.14"}
+          - {impl: python, python: "3.15"}
+
+          - {impl: c, python: "3.10"}
+          - {impl: c, python: "3.11"}
+          - {impl: c, python: "3.12"}
+          - {impl: c, python: "3.13"}
+          - {impl: c, python: "3.14"}
+          - {impl: c, python: "3.15"}
+
+          # Free-threaded builds: the new implementation replaces an Event and
+          # a Task with a Future and a couple of callbacks, which is the sort
+          # of thing that may behave differently without the GIL.
+          - {impl: python, python: "3.14t"}
+          - {impl: python, python: "3.15t"}
+          - {impl: c, python: "3.14t"}
+          - {impl: c, python: "3.15t"}
+
+          # PyPy allocates very differently from CPython, so the Task we are
+          # not creating anymore may weigh more, or a lot less. Note that the
+          # JIT makes the first rounds of every measure slower.
+          - {impl: python, python: "pypy3.10"}
+          - {impl: python, python: "pypy3.11"}
+
+    env:
+      PSYCOPG_IMPL: ${{ matrix.impl }}
+      DEPS: ./psycopg
+      PSYCOPG_TEST_DSN: "host=127.0.0.1 user=postgres password=password"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+
+      - name: Start PostgreSQL service
+        run: |
+          docker pull postgres:18
+          docker run --rm -d --name postgres -p 5432:5432 \
+            -e POSTGRES_PASSWORD=password postgres:18
+
+      - name: Install the libpq
+        run: sudo ./tools/ci/ci_install_libpq.sh
+
+      - name: Include psycopg-c to the packages to install
+        if: ${{ matrix.impl == 'c' }}
+        run: |
+          echo "DEPS=$DEPS ./psycopg_c" >> $GITHUB_ENV
+
+      - name: Install Python packages
+        run: pip install $DEPS
+
+      - name: Run the wait functions benchmark
+        run: ./tools/ci/ci_waittest.sh linux-py${{ matrix.python }}-${{ matrix.impl }}
+
+      - name: Upload the benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: waittest-linux-py${{ matrix.python }}-${{ matrix.impl }}
+          path: waittest-out/
+
+
+  # }}}
+
+  macos:  # {{{
+    runs-on: macos-14
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {impl: python, python: "3.10"}
+          - {impl: python, python: "3.11"}
+          - {impl: python, python: "3.12"}
+          - {impl: python, python: "3.13"}
+          - {impl: python, python: "3.14"}
+          - {impl: python, python: "3.15"}
+          - {impl: c, python: "3.10"}
+          - {impl: c, python: "3.11"}
+          - {impl: c, python: "3.12"}
+          - {impl: c, python: "3.13"}
+          - {impl: c, python: "3.14"}
+          - {impl: c, python: "3.15"}
+
+    env:
+      PSYCOPG_IMPL: ${{ matrix.impl }}
+      DEPS: ./psycopg
+      PSYCOPG_TEST_DSN: "host=127.0.0.1 user=runner dbname=postgres"
+      PG_VERSION: "18"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+
+      - name: Install PostgreSQL on the runner
+        run: brew install postgresql@${PG_VERSION}
+
+      - name: Start PostgreSQL service
+        run: brew services start postgresql@${PG_VERSION}
+
+      - name: Find the libpq
+        if: ${{ matrix.impl == 'python' }}
+        run: |
+          echo "DYLD_LIBRARY_PATH=/opt/homebrew/opt/postgresql@${PG_VERSION}/lib/postgresql:/opt/homebrew/opt/postgresql@${PG_VERSION}/lib:$DYLD_LIBRARY_PATH" \
+              >> $GITHUB_ENV
+
+      - name: Include psycopg-c to the packages to install
+        if: ${{ matrix.impl == 'c' }}
+        run: |
+          echo "DEPS=$DEPS ./psycopg_c" >> $GITHUB_ENV
+          echo "PATH=/opt/homebrew/opt/postgresql@${PG_VERSION}/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Install Python packages
+        run: pip install $DEPS
+
+      - name: Run the wait functions benchmark
+        run: ./tools/ci/ci_waittest.sh macos-py${{ matrix.python }}-${{ matrix.impl }}
+
+      - name: Upload the benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: waittest-macos-py${{ matrix.python }}-${{ matrix.impl }}
+          path: waittest-out/
+
+
+  # }}}
+
+  windows:  # {{{
+    # TODO: move it back to windows-latest when the default runner switches.
+    runs-on: windows-2025
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {impl: python, python: "3.10"}
+          - {impl: python, python: "3.11"}
+          - {impl: python, python: "3.12"}
+          - {impl: python, python: "3.13"}
+          - {impl: python, python: "3.14"}
+          - {impl: python, python: "3.15"}
+          - {impl: c, python: "3.10"}
+          - {impl: c, python: "3.11"}
+          - {impl: c, python: "3.12"}
+          - {impl: c, python: "3.13"}
+          - {impl: c, python: "3.14"}
+          - {impl: c, python: "3.15"}
+
+    env:
+      PSYCOPG_IMPL: ${{ matrix.impl }}
+      DEPS: ./psycopg
+      PSYCOPG_TEST_DSN: "host=127.0.0.1 dbname=postgres"
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # there are some extra libpq.dll in PATH
+      - run: rm -rf c:/tools/php C:/Strawberry/c/bin
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: true
+
+      - name: Start PostgreSQL service
+        run: |
+          $PgSvc = Get-Service "postgresql*"
+          Set-Service $PgSvc.Name -StartupType manual
+          $PgSvc.Start()
+        shell: powershell
+
+      - name: Export GitHub Actions cache environment variables
+      # https://learn.microsoft.com/en-us/vcpkg/consume/binary-caching-github-actions-cache
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const path = require('path')
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+            core.addPath(path.join(process.env.VCPKG_INSTALLATION_ROOT, 'installed/x64-windows-release/lib'));
+            core.addPath(path.join(process.env.VCPKG_INSTALLATION_ROOT, 'installed/x64-windows-release/bin'));
+
+      - name: Install libpq from vcpkg and install pg_config.exe stub
+        run: .\tools\ci\wheel_win32_before_build.bat
+        shell: powershell
+        env:
+          # cache vcpkg
+          VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+      - name: Build the C wheel
+        if: ${{ matrix.impl == 'c' }}
+        run: |
+          # If the wheel is not delocated, import fails with some dll not found
+          # (but it won't tell which one).
+          pip wheel -v -w ./psycopg_c/dist/ ./psycopg_c/
+          delvewheel repair --no-mangle "libiconv-2.dll;libwinpthread-1.dll" \
+            -w ./wheelhouse/ psycopg_c/dist/psycopg*.whl
+          echo "DEPS=$DEPS $(ls ./wheelhouse/*.whl)" >> $GITHUB_ENV
+
+      - name: Install Python packages
+        run: pip install $DEPS
+
+      - name: Run the wait functions benchmark
+        run: ./tools/ci/ci_waittest.sh windows-py${{ matrix.python }}-${{ matrix.impl }}
+
+      - name: Upload the benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: waittest-windows-py${{ matrix.python }}-${{ matrix.impl }}
+          path: waittest-out/
+
+
+  # }}}
+
+  merge:  # {{{
+    runs-on: ubuntu-latest
+    # Don't skip the merge if one of the matrix entries failed: the results of
+    # the other ones are still worth downloading.
+    if: always()
+    needs:
+      - linux
+      - macos
+      - windows
+    steps:
+      - name: Merge Artifacts
+        uses: actions/upload-artifact/merge@v7
+        with:
+          name: waittest-results
+          pattern: waittest-*
+          delete-merged: true
+
+  # }}}
