@@ -143,6 +143,11 @@ def test_roundtrip_numeric_binary_limits(conn):
         )
         assert cur.fetchone()[0] is True
 
+    # A zero is dumped as 0 whatever the exponent: the server wouldn't even
+    # parse a literal with an exponent this large.
+    cur.execute("select %b::numeric::text", (Decimal("0E+999999999999999999"),))
+    assert cur.fetchone()[0] == "0"
+
 
 @pytest.mark.parametrize("fmt_in", [PyFormat.TEXT, PyFormat.BINARY])
 def test_int_none(conn, fmt_in):
@@ -412,6 +417,13 @@ def test_load_float_copy(conn):
         "0.0",
         "0.000000000000000000001",
         "-0.000000000000000000001",
+        # A zero has no weight, so exponents out of the range of a nonzero
+        # number are not an error.
+        "0E+131071",
+        "0E+131072",
+        "0E+131073",
+        "-0E+131073",
+        "0E-16383",
         "nan",
         "snan",
     ],
@@ -475,6 +487,11 @@ def test_quote_numeric(conn, val, expr):
         "1000000000000000000000000.001",
         "1000000000000000000000000000.001",
         "9999999999999999999999999999.9",
+        "0E+131071",
+        "0E+131072",
+        "0E+131073",
+        "-0E+131073",
+        "0E-16383",
     ],
 )
 def test_dump_numeric_binary(conn, expr):
