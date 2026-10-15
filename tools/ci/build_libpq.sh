@@ -112,7 +112,7 @@ if [ "$ID" == "centos" ] || [ "$ID" == "rocky" ] || [ "$ID" == "almalinux" ]|| [
 
         pushd "${openssl_dir}"
 
-        options=(--prefix=${LIBPQ_BUILD_PREFIX} --openssldir=${LIBPQ_BUILD_PREFIX} \
+        options=(--prefix=${LIBPQ_BUILD_PREFIX} --openssldir=/etc/ssl \
             zlib -fPIC shared)
         if [ -z "${MACOSX_ARCHITECTURE:-}" ]; then
             ./config ${options[*]}
