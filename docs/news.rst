@@ -7,6 +7,15 @@
 ``psycopg`` release notes
 =========================
 
+Future releases
+---------------
+
+Psycopg 3.3.9 (unreleased)
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- Reduce the size of the binary packages.
+
+
 Current release
 ---------------
 
