@@ -50,7 +50,7 @@ fi
 case "$ID" in
     centos | almalinux | rocky)
         yum update -y
-        yum install -y bison flex cyrus-sasl-devel keyutils-libs-devel \
+        yum install -y bison flex keyutils-libs-devel \
             pam-devel perl perl-IPC-Cmd perl-Time-Piece zlib-devel
         ;;
 
@@ -61,7 +61,7 @@ case "$ID" in
         ;;
 
     macos)
-        brew install automake cyrus-sasl libtool m4
+        brew install automake libtool m4
         # If available, libpq seemingly insists on linking against homebrew's
         # openssl no matter what so remove it. Since homebrew's curl depends on
         # it, force use of system curl.
@@ -120,7 +120,12 @@ if [ "$ID" == "centos" ] || [ "$ID" == "rocky" ] || [ "$ID" == "almalinux" ]|| [
         # meant for a different OpenSSL build (see #1476).
         options=(--prefix=${LIBPQ_BUILD_PREFIX} \
             --openssldir=/usr/lib/psycopg-openssl \
-            zlib -fPIC shared)
+            -fPIC shared)
+        # Leave out what libpq doesn't use, to make the wheels smaller.
+        options+=(no-apps no-docs no-tests \
+            no-quic no-dtls no-srp no-psk no-ct no-ocsp no-ts no-cmp no-cms \
+            no-camellia no-aria no-idea no-seed no-sm2 no-sm3 no-sm4 \
+            no-whirlpool no-mdc2 no-ec2m no-siphash no-slh-dsa)
         # Don't generate unwind tables for the libraries used by libpq (but
         # not for the libpq itself): they are a large part of the wheels, and
         # losing tracebacks and profiles inside the crypto/kerberos/ldap
@@ -229,7 +234,7 @@ if [ "$ID" == "centos" ] || [ "$ID" == "rocky" ] || [ "$ID" == "almalinux" ]|| [
         pushd "${ldap_dir}"
 
         options=("${make_configure_standard_flags[@]}" \
-            --enable-backends=no --enable-null)
+            --enable-backends=no --enable-null --without-cyrus-sasl)
         if [ "$ID" != "macos" ]; then
             # No unwind tables: see the OpenSSL build.
             options+=( \
