@@ -122,8 +122,10 @@ if [ "$ID" == "centos" ] || [ "$ID" == "rocky" ] || [ "$ID" == "almalinux" ]|| [
             --openssldir=/usr/lib/psycopg-openssl \
             -fPIC shared)
         # Leave out what libpq doesn't use, to make the wheels smaller.
+        # Note: the Python used in the build finds these libraries too, via
+        # LD_LIBRARY_PATH, so don't disable what its ssl module uses (e.g. PSK).
         options+=(no-apps no-docs no-tests \
-            no-quic no-dtls no-srp no-psk no-ct no-ocsp no-ts no-cmp no-cms \
+            no-quic no-dtls no-srp no-ct no-ocsp no-ts no-cmp no-cms \
             no-camellia no-aria no-idea no-seed no-sm2 no-sm3 no-sm4 \
             no-whirlpool no-mdc2 no-ec2m no-siphash no-slh-dsa)
         # Don't generate unwind tables for the libraries used by libpq (but
