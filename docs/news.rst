@@ -23,6 +23,9 @@ Psycopg 3.3.9 (unreleased)
   made pipeline mode, `~AsyncCursor.executemany()` and `~AsyncCopy.write()`
   on async connections several times slower than on sync ones
   (:ticket:`#1468`).
+- Raise `DataError` instead of `!ValueError` registering a composite whose
+  name or attributes are not valid namedtuple names, for instance Python
+  keywords (:ticket:`#1482`).
 - Speed up the C implementation of the sync wait function, in particular when
   the connection doesn't need to wait, for instance at every `~Copy.write()`
   (:ticket:`#1484`).
