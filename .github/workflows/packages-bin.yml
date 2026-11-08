@@ -34,7 +34,8 @@ env:
   OPENSSL_VERSION: "3.5.9"
 
   # Suffix of the libpq cache keys: change it to rebuild the libpq.
-  PQ_FLAGS: "-r4"
+  # NOMERGE: branch-only cache key, set it back to "-rN" before merging.
+  PQ_FLAGS: "-smaller-1"
 
 concurrency:
   # Cancel older requests of the same workflow in the same branch.
