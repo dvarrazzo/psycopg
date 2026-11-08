@@ -59,7 +59,7 @@ env:
   OPENSSL_VERSION: "3.5.9"
 
   # Suffix of the libpq cache keys: change it to rebuild the libpq.
-  PQ_FLAGS: "-r3"
+  PQ_FLAGS: "-r4"
 
 concurrency:
   # Cancel older requests of the same workflow in the same branch.
@@ -109,12 +109,12 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: ./tools/ci/build_libpq.sh
           CIBW_REPAIR_WHEEL_COMMAND: >-
             ./tools/ci/strip_wheel.sh {wheel}
-            && auditwheel repair -w {dest_dir} {wheel}
+            && LD_LIBRARY_PATH="$LIBPQ_BUILD_PREFIX/lib"
+            auditwheel repair -w {dest_dir} {wheel}
           CIBW_ENVIRONMENT_PASS_LINUX: LIBPQ_VERSION OPENSSL_VERSION
           CIBW_ENVIRONMENT: >-
             LIBPQ_BUILD_PREFIX=/host/tmp/libpq.build
             PATH="$LIBPQ_BUILD_PREFIX/bin:$PATH"
-            LD_LIBRARY_PATH="$LIBPQ_BUILD_PREFIX/lib:$LIBPQ_BUILD_PREFIX/lib64"
 
 
   # }}}

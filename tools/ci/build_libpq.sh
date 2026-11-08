@@ -99,6 +99,10 @@ else
     )
 fi
 
+# Only use the libraries we build to run the configure tests: don't export it,
+# or they would be loaded by the system tools too, such as curl.
+build_ld_path="${LIBPQ_BUILD_PREFIX}/lib:${LIBPQ_BUILD_PREFIX}/lib64"
+
 if [ "$ID" == "centos" ] || [ "$ID" == "rocky" ] || [ "$ID" == "almalinux" ]|| [ "$ID" == "macos" ]; then
   # OpenSSL installs into lib64 on some 64 bits Linux platforms.
   if [[ ! -f "${LIBPQ_BUILD_PREFIX}/lib/libssl.${library_suffix}" \
@@ -118,12 +122,13 @@ if [ "$ID" == "centos" ] || [ "$ID" == "rocky" ] || [ "$ID" == "almalinux" ]|| [
         # OPENSSLDIR, so that no openssl.cnf or certificate is loaded from
         # there. Don't use /etc/ssl either: the system openssl.cnf may be
         # meant for a different OpenSSL build (see #1476).
-        options=(--prefix=${LIBPQ_BUILD_PREFIX} \
+        # Install in lib, not lib64, where the libpq rpath points.
+        options=(--prefix=${LIBPQ_BUILD_PREFIX} --libdir=lib \
             --openssldir=/usr/lib/psycopg-openssl \
             -fPIC shared)
         # Leave out what libpq doesn't use, to make the wheels smaller.
-        # Note: the Python used in the build finds these libraries too, via
-        # LD_LIBRARY_PATH, so don't disable what its ssl module uses (e.g. PSK).
+        # Note: auditwheel runs with these libraries in LD_LIBRARY_PATH, so
+        # don't disable what the Python ssl module uses (e.g. PSK).
         options+=(no-apps no-docs no-tests \
             no-quic no-dtls no-srp no-ct no-ocsp no-ts no-cmp no-cms \
             no-camellia no-aria no-idea no-seed no-sm2 no-sm3 no-sm4 \
@@ -242,7 +247,7 @@ if [ "$ID" == "centos" ] || [ "$ID" == "rocky" ] || [ "$ID" == "almalinux" ]|| [
             options+=( \
                 "CFLAGS=-O2 -fno-asynchronous-unwind-tables -fno-unwind-tables")
         fi
-        ./configure "${options[@]}"
+        LD_LIBRARY_PATH="${build_ld_path}" ./configure "${options[@]}"
 
         make -s depend
         make -s -C libraries/liblutil/
@@ -299,9 +304,8 @@ HERE
             src/include/pg_config_manual.h
     fi
 
-    export LD_LIBRARY_PATH="${LIBPQ_BUILD_PREFIX}/lib:${LIBPQ_BUILD_PREFIX}/lib64"
-
-    ./configure "${make_configure_standard_flags[@]}" --sysconfdir=/etc/postgresql-common \
+    LD_LIBRARY_PATH="${build_ld_path}" \
+        ./configure "${make_configure_standard_flags[@]}" --sysconfdir=/etc/postgresql-common \
         --with-gssapi --with-openssl --with-pam --with-ldap \
         --without-readline --without-icu
     make -s -C src/interfaces/libpq

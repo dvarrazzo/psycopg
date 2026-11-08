@@ -34,7 +34,7 @@ env:
   OPENSSL_VERSION: "3.5.9"
 
   # Suffix of the libpq cache keys: change it to rebuild the libpq.
-  PQ_FLAGS: "-r3"
+  PQ_FLAGS: "-r4"
 
 concurrency:
   # Cancel older requests of the same workflow in the same branch.
@@ -89,7 +89,8 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: ./tools/ci/wheel_linux_before_all.sh
           CIBW_REPAIR_WHEEL_COMMAND: >-
             ./tools/ci/strip_wheel.sh {wheel}
-            && auditwheel repair -w {dest_dir} {wheel}
+            && LD_LIBRARY_PATH="$LIBPQ_BUILD_PREFIX/lib"
+            auditwheel repair -w {dest_dir} {wheel}
           CIBW_TEST_REQUIRES: ./psycopg[test] ./psycopg_pool
           CIBW_TEST_COMMAND: pytest {project}/tests
           CIBW_ENVIRONMENT_PASS_LINUX: LIBPQ_VERSION OPENSSL_VERSION
@@ -99,7 +100,6 @@ jobs:
             PGPASSWORD=password
             LIBPQ_BUILD_PREFIX=/host/tmp/libpq.build
             PATH="$LIBPQ_BUILD_PREFIX/bin:$PATH"
-            LD_LIBRARY_PATH="$LIBPQ_BUILD_PREFIX/lib:$LIBPQ_BUILD_PREFIX/lib64"
             PSYCOPG_TEST_WANT_LIBPQ_BUILD=${{ env.LIBPQ_VERSION }}
             PSYCOPG_TEST_WANT_LIBPQ_IMPORT=${{ env.LIBPQ_VERSION }}
             PYTEST_ADDOPTS="-m 'not slow and not flakey' --color yes"
