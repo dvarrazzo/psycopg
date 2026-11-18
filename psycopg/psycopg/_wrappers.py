@@ -135,3 +135,21 @@ class Oid(int):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({super().__repr__()})"
+
+
+class Oid8(int):
+    """
+    Force dumping a Python `!int` as a PostgreSQL :sql:`oid8`.
+    """
+
+    __module__ = _MODULE
+    __slots__ = ()
+
+    def __new__(cls, arg: int) -> "Oid8":
+        return super().__new__(cls, arg)
+
+    def __str__(self) -> str:
+        return super().__repr__()
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({super().__repr__()})"

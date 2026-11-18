@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import enum
 from math import exp, isinf, isnan
+from typing import Any
 from decimal import Decimal
 
 import pytest
@@ -13,6 +14,13 @@ from psycopg.adapt import PyFormat, Transformer
 from psycopg.types.numeric import FloatLoader, Int8, Int8BinaryDumper, Int8Dumper
 
 from ..fix_crdb import is_crdb, skip_crdb
+
+try:
+    from psycopg.types.numeric import Oid8
+except ImportError:
+    # Allow importing the test module with Psycopg < 3.4 installed.
+    # (e.g. to run pool compatibility tests).
+    Oid8 = int  # type: ignore
 
 #
 # Tests with int
@@ -690,7 +698,11 @@ def test_minus_minus_quote(conn, pgtype):
     assert result == 1
 
 
-@pytest.mark.parametrize("wrapper", "Int2 Int4 Int8 Oid Float4 Float8".split())
+WRAPPERS: list[Any] = "Int2 Int4 Int8 Oid Float4 Float8".split()
+WRAPPERS.append(pytest.param("Oid8", marks=pytest.mark.pg(">= 19")))
+
+
+@pytest.mark.parametrize("wrapper", WRAPPERS)
 @pytest.mark.parametrize("fmt_in", PyFormat)
 def test_dump_wrapper(conn, wrapper, fmt_in):
     wrapper = getattr(psycopg.types.numeric, wrapper)
@@ -702,7 +714,7 @@ def test_dump_wrapper(conn, wrapper, fmt_in):
     assert rec[0], rec[1]
 
 
-@pytest.mark.parametrize("wrapper", "Int2 Int4 Int8 Oid Float4 Float8".split())
+@pytest.mark.parametrize("wrapper", "Int2 Int4 Int8 Oid Oid8 Float4 Float8".split())
 def test_dump_wrapper_oid(wrapper):
     wrapper = getattr(psycopg.types.numeric, wrapper)
     base = wrapper.__mro__[1]
@@ -713,13 +725,24 @@ def test_dump_wrapper_oid(wrapper):
 
 
 @pytest.mark.crdb("skip", reason="all types returned as bigint? TODOCRDB")
-@pytest.mark.parametrize("wrapper", "Int2 Int4 Int8 Oid Float4 Float8".split())
+@pytest.mark.parametrize("wrapper", WRAPPERS)
 @pytest.mark.parametrize("fmt_in", PyFormat)
 def test_repr_wrapper(conn, wrapper, fmt_in):
     wrapper = getattr(psycopg.types.numeric, wrapper)
     cur = conn.execute(f"select pg_typeof(%{fmt_in.value})::oid", [wrapper(0)])
     oid = cur.fetchone()[0]
     assert oid == psycopg.postgres.types[wrapper.__name__.lower()].oid
+
+
+@pytest.mark.pg(">= 19")
+@pytest.mark.parametrize("val", [0, 1, 2**32, 2**64 - 1])
+@pytest.mark.parametrize("fmt_in", PyFormat)
+@pytest.mark.parametrize("fmt_out", pq.Format)
+def test_roundtrip_oid8(conn, val, fmt_in, fmt_out):
+    cur = conn.cursor(binary=fmt_out)
+    cur.execute(f"select %{fmt_in.value}, %{fmt_in.value}::text", [Oid8(val)] * 2)
+    assert cur.pgresult.ftype(0) == conn.adapters.types["oid8"].oid
+    assert cur.fetchone() == (val, str(val))
 
 
 @pytest.mark.parametrize("fmt_out", pq.Format)
