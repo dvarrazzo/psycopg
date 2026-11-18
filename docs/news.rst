@@ -7,6 +7,15 @@
 ``psycopg`` release notes
 =========================
 
+Future releases
+---------------
+
+Psycopg 3.3.10 (unreleased)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- Add loaders for the PostgreSQL 19 :sql:`oid8` data type.
+
+
 Current release
 ---------------
 
