@@ -80,6 +80,9 @@ def parse_row_text(data: abc.Buffer, tx: abc.Transformer) -> tuple[Any, ...]: ..
 def parse_row_binary(data: abc.Buffer, tx: abc.Transformer) -> tuple[Any, ...]: ...
 
 # Arrays optimization
+def array_dump_text(
+    obj: list[Any], sub_dumper: abc.Dumper | None, delimiter: bytes, tx: Transformer
+) -> bytearray: ...
 def array_dump_binary(
     obj: list[Any], cls: type[list[Any]], sub_dumper: abc.Dumper | None
 ) -> bytearray: ...

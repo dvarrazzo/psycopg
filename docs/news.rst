@@ -19,6 +19,7 @@ Psycopg 3.3.10 (unreleased)
   (:ticket:`#1498`).
 - Fix `!json` and `!jsonb` loading and dumping when the connection encoding
   is not UTF-8 (:ticket:`#1504`).
+- List dumping to arrays ported to C, resulting in 3 to 20x speedup.
 
 
 Current release

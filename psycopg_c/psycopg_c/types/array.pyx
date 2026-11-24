@@ -512,3 +512,265 @@ cdef int _array_dump_binary_rec(
             pos[0] += size + sizeof(besize)
 
     return hasnull
+
+
+def array_dump_text(
+    obj, sub_dumper, bytes delimiter, Transformer tx not None
+) -> bytearray:
+    """
+    Return the text representation of a list as Postgres array.
+
+    Dump the items with `!sub_dumper` if specified, otherwise look up a
+    dumper for each of them.
+    """
+    cdef ArrayTextDump state
+    state.cdumper = NULL
+    state.dumpfunc = NULL
+    state.tx = <PyObject *>tx
+
+    if len(delimiter) != 1:
+        raise ValueError("the delimiter must be a single byte")
+    state.cdelim = delimiter[0]
+
+    # The dumper and its dump function are kept alive by these references.
+    cdef object dumpfunc
+    if sub_dumper is not None:
+        if isinstance(sub_dumper, CDumper):
+            state.cdumper = <PyObject *>sub_dumper
+        else:
+            dumpfunc = sub_dumper.dump
+            state.dumpfunc = <PyObject *>dumpfunc
+
+    cdef bytearray out = PyByteArray_FromStringAndSize("", 0)
+    cdef Py_ssize_t pos = 0
+    _array_dump_text_rec(obj, &state, out, &pos)
+    PyByteArray_Resize(out, pos)
+    return out
+
+
+cdef struct ArrayTextDump:
+    # How to dump the items: with a C dumper, with a Python dumper, or
+    # looking up a dumper for each of them using the transformer.
+    PyObject *cdumper
+    PyObject *dumpfunc
+    PyObject *tx
+    char cdelim
+
+
+cdef int _array_dump_text_rec(
+    object L, ArrayTextDump *state, bytearray out, Py_ssize_t *pos
+) except -1:
+    """
+    Write the text representation of a list into *out* at *pos*, advancing it.
+    """
+    fast = PySequence_Fast(L, "the object to dump is not a sequence")
+    cdef Py_ssize_t nitems = PySequence_Fast_GET_SIZE(fast)
+    cdef char *target
+
+    if not nitems:
+        target = CDumper.ensure_size(out, pos[0], 2)
+        target[0] = b"{"
+        target[1] = b"}"
+        pos[0] += 2
+        return 0
+
+    target = CDumper.ensure_size(out, pos[0], 1)
+    target[0] = b"{"
+    pos[0] += 1
+
+    cdef Py_ssize_t i
+    cdef object item
+    cdef PyObject *cdumper
+    cdef PyObject *dumpfunc
+    cdef PyObject *row_dumper
+
+    for i in range(nitems):
+        item = <object>PySequence_Fast_GET_ITEM(fast, i)
+        if item is None:
+            _array_dump_text_null(out, pos)
+
+        elif PyList_Check(item):
+            _enter_list()
+            try:
+                _array_dump_text_rec(item, state, out, pos)
+            finally:
+                Py_LeaveRecursiveCall()
+
+        else:
+            cdumper = state.cdumper
+            dumpfunc = state.dumpfunc
+            if cdumper == NULL and dumpfunc == NULL:
+                row_dumper = (<Transformer>state.tx).get_row_dumper(
+                    <PyObject *>item, <PyObject *>PG_TEXT)
+                if (<RowDumper>row_dumper).cdumper is not None:
+                    cdumper = <PyObject *>(<RowDumper>row_dumper).cdumper
+                else:
+                    dumpfunc = <PyObject *>(<RowDumper>row_dumper).dumpfunc
+
+            if cdumper != NULL:
+                _array_dump_text_item_c(
+                    item, <CDumper>cdumper, state.cdelim, out, pos)
+            else:
+                _array_dump_text_item_py(
+                    item, <object>dumpfunc, state.cdelim, out, pos)
+
+        # Leave the space for the delimiter, or for the closing bracket
+        target = CDumper.ensure_size(out, pos[0], 1)
+        target[0] = state.cdelim
+        pos[0] += 1
+
+    (PyByteArray_AS_STRING(out) + pos[0] - 1)[0] = b"}"
+    return 0
+
+
+cdef int _array_dump_text_null(bytearray out, Py_ssize_t *pos) except -1:
+    cdef char *target = CDumper.ensure_size(out, pos[0], 4)
+    memcpy(target, b"NULL", 4)
+    pos[0] += 4
+    return 0
+
+
+cdef int _array_dump_text_item_c(
+    object item, CDumper cdumper, char cdelim, bytearray out, Py_ssize_t *pos
+) except -1:
+    """
+    Dump an item using a C dumper, writing it in place and quoting it after.
+    """
+    cdef Py_ssize_t size = cdumper.cdump(item, out, pos[0])
+    cdef Py_ssize_t nescs = _array_count_escapes(
+        PyByteArray_AS_STRING(out) + pos[0], size, cdelim)
+    if nescs < 0:
+        pos[0] += size
+        return 0
+
+    # Make room for the quotes and the escapes and move the data to the end
+    # of it, starting from the last char, adding the escapes on the way.
+    cdef Py_ssize_t newsize = size + nescs + 2
+    cdef char *start = CDumper.ensure_size(out, pos[0], newsize)
+    cdef char *src = start + size - 1
+    cdef char *tgt = start + newsize - 1
+
+    tgt[0] = b'"'
+    tgt -= 1
+    while src >= start:
+        tgt[0] = src[0]
+        tgt -= 1
+        if src[0] == b'"' or src[0] == b"\\":
+            tgt[0] = b"\\"
+            tgt -= 1
+        src -= 1
+    tgt[0] = b'"'
+
+    pos[0] += newsize
+    return 0
+
+
+cdef int _array_dump_text_item_py(
+    object item, object dumpfunc, char cdelim, bytearray out, Py_ssize_t *pos
+) except -1:
+    """
+    Dump an item using the dump function of a Python dumper.
+    """
+    data = dumpfunc(item)
+    if data is None:
+        return _array_dump_text_null(out, pos)
+
+    cdef char *src
+    cdef Py_ssize_t size
+    _buffer_as_string_and_size(data, &src, &size)
+
+    cdef Py_ssize_t nescs = _array_count_escapes(src, size, cdelim)
+    cdef char *tgt
+    if nescs < 0:
+        tgt = CDumper.ensure_size(out, pos[0], size)
+        memcpy(tgt, src, size)
+        pos[0] += size
+        return 0
+
+    cdef Py_ssize_t newsize = size + nescs + 2
+    cdef const char *end = src + size
+    tgt = CDumper.ensure_size(out, pos[0], newsize)
+
+    tgt[0] = b'"'
+    tgt += 1
+    while src < end:
+        if src[0] == b'"' or src[0] == b"\\":
+            tgt[0] = b"\\"
+            tgt += 1
+        tgt[0] = src[0]
+        tgt += 1
+        src += 1
+    tgt[0] = b'"'
+
+    pos[0] += newsize
+    return 0
+
+
+cdef Py_ssize_t _array_count_escapes(
+    const char *data, Py_ssize_t size, char cdelim
+) noexcept nogil:
+    """
+    Return the number of chars to escape in an array item if it needs quotes.
+
+    Return -1 if the item doesn't need quotes.
+
+    This is the equivalent of the regexp in `_get_needs_quotes_regexp()` in
+    the Python implementation.
+    """
+    # The empty string
+    if size == 0:
+        return 0
+
+    cdef const unsigned char *buf = <const unsigned char *>data
+    cdef unsigned char c
+    cdef Py_ssize_t i
+    cdef Py_ssize_t nescs = 0
+    cdef int quote = 0
+
+    for i in range(size):
+        c = buf[i]
+        if c == b'"' or c == b"\\":
+            nescs += 1
+
+        elif (
+            c == b"{" or c == b"}" or c == <unsigned char>cdelim
+            # White space, as matched by the '\s' regexp
+            or c == b" " or (9 <= c <= 13)
+        ):
+            quote = 1
+
+        # UTF-8 Unicode spaces stripped by CockroachDB
+        elif 0xE1 <= c <= 0xE3 and i + 2 < size:
+            if c == 0xE1:
+                # U+1680
+                if buf[i + 1] == 0x9A and buf[i + 2] == 0x80:
+                    quote = 1
+            elif c == 0xE2:
+                if buf[i + 1] == 0x80:
+                    # U+2000-U+200A, U+2028, U+2029, U+202F
+                    c = buf[i + 2]
+                    if 0x80 <= c <= 0x8A or c == 0xA8 or c == 0xA9 or c == 0xAF:
+                        quote = 1
+                elif buf[i + 1] == 0x81:
+                    # U+205F
+                    if buf[i + 2] == 0x9F:
+                        quote = 1
+            else:
+                # U+3000
+                if buf[i + 1] == 0x80 and buf[i + 2] == 0x80:
+                    quote = 1
+
+    if nescs or quote:
+        return nescs
+
+    # The word NULL
+    if (
+        size == 4
+        and (buf[0] == b"N" or buf[0] == b"n")
+        and (buf[1] == b"U" or buf[1] == b"u")
+        and (buf[2] == b"L" or buf[2] == b"l")
+        and (buf[3] == b"L" or buf[3] == b"l")
+    ):
+        return 0
+
+    return -1

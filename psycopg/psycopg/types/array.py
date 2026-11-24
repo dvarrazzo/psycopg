@@ -548,12 +548,13 @@ def _load_binary(data: Buffer, tx: Transformer) -> list[Any]:
     return out
 
 
-_dump_text = _dump_text_py
-
+_dump_text: Callable[[list[Any], "Dumper | None", bytes, Transformer], Buffer]
 _dump_binary: Callable[[list[Any], "type[list[Any]]", "Dumper | None"], Buffer]
 
 # Override functions with fast versions if available
 if _psycopg:
+    _dump_text = _psycopg.array_dump_text
     _dump_binary = _psycopg.array_dump_binary
 else:
+    _dump_text = _dump_text_py
     _dump_binary = _dump_binary_py

@@ -84,6 +84,68 @@ def test_dump_list_str_none(conn, fmt_in):
     assert cur.fetchone()[0] == ["foo", None, "bar"]
 
 
+tests_quotes = [
+    "",
+    "null",
+    "NULL",
+    "Null",
+    "nulls",
+    "nul",
+    "a b",
+    "a,b",
+    "a\tb",
+    "{",
+    "}",
+    '"',
+    "\\",
+    '\\"' * 100,
+    'x"y\\z' * 3,
+    'final"',
+    '"initial',
+    "\u1680",
+    "a\u2003",
+    "\u2028b",
+    "\u205f",
+    "\u3000",
+    "\u1681\u200b\u2030\u3001",  # similar, but don't need quotes
+]
+
+
+class StrPyDumper(Dumper):
+    def dump(self, obj: str) -> bytes:
+        return obj.encode()
+
+
+@pytest.mark.parametrize("fmt_in", PyFormat)
+@pytest.mark.parametrize("pydumper", [False, True])
+def test_dump_list_quotes(conn, fmt_in, pydumper):
+    cur = conn.cursor()
+    if pydumper:
+        cur.adapters.register_dumper(str, StrPyDumper)
+    cur.execute(f"select %{fmt_in.value}::text[]", (tests_quotes,))
+    assert cur.fetchone()[0] == tests_quotes
+
+
+@pytest.mark.parametrize("pydumper", [False, True])
+def test_dump_list_quotes_format(conn, pydumper):
+    if pydumper:
+        conn.adapters.register_dumper(str, StrPyDumper)
+    tx = Transformer(conn)
+    obj = ["a", "", "nUlL", "a b", "x,y", 'a"b', "a\\b", "{}", "nulls", "\u3000"]
+    got = tx.get_dumper(obj, PyFormat.TEXT).dump(obj)
+    want = '{a,"","nUlL","a b","x,y","a\\"b","a\\\\b","{}",nulls,"\u3000"}'
+    assert got == want.encode()
+
+
+def test_dump_list_no_sub_dumper():
+    # Without a context the dumper finds a dumper for each item
+    cls = psycopg.adapters.get_dumper_by_oid(builtins["text"].array_oid, pq.Format.TEXT)
+    dumper = cls(type(None), None)
+    assert dumper.sub_dumper is None  # type: ignore[attr-defined]
+    obj = ["a", 1, None, 'x"y', [2.5, ""], []]
+    assert dumper.dump(obj) == rb'{a,1,NULL,"x\"y",{2.5,""},{}}'
+
+
 @pytest.mark.parametrize("fmt_out", pq.Format)
 def test_load_empty_list_str(conn, fmt_out):
     cur = conn.cursor(binary=fmt_out)
