@@ -185,7 +185,7 @@ def test_dump_list_int(conn, obj, want):
         [["a"], []],
         [[], ["a"]],
         [[["a"]], ["b"]],
-        # [["a"], [["b"]]],  # todo, but expensive (an isinstance per item)
+        # [["a"], [["b"]]],  # not checked: expensive (an isinstance per item)
         # [True, b"a"], # TODO expensive too
     ],
 )

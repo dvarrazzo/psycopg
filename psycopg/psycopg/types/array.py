@@ -303,6 +303,11 @@ class ListBinaryDumper(BaseListDumper):
         if dim == len(dims) - 1:
             for item in L:
                 if item is not None:
+                    # A nested list here means inconsistent depths, but checking
+                    # every item is expensive: don't bother, the element dumper
+                    # will fail on it.
+                    # if isinstance(item, self.cls):
+                    #     raise e.DataError("nested lists have inconsistent depths")
                     # If we get here, the sub_dumper must have been set
                     item = self.sub_dumper.dump(item)  # type: ignore[union-attr]
                 if item is not None:
