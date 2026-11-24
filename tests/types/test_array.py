@@ -221,6 +221,41 @@ def test_dump_list_recursive(fmt_in):
         Transformer().get_dumper(x, fmt_in)
 
 
+def nest(obj: Any, levels: int) -> list[Any]:
+    for i in range(levels):
+        obj = [obj]
+    return obj  # type: ignore[no-any-return]
+
+
+@pytest.mark.parametrize("fmt", pq.Format)
+def test_dump_many_dims(fmt):
+    # More dimensions than Postgres takes: it's up to the server to refuse.
+    obj = nest(1, 20)
+    tx = Transformer()
+    tx.set_dumper_types([builtins["int4"].array_oid], fmt)
+    got = tx.dump_sequence([obj], [PyFormat.from_pq(fmt)])[0]
+    assert got is not None
+    if fmt == pq.Format.TEXT:
+        assert bytes(got) == b"{" * 20 + b"1" + b"}" * 20
+    else:
+        head = (20, 0, builtins["int4"].oid)
+        dims = (1, 1) * 20  # (length, lower bound) per dimension
+        item = (4, 1)  # (length, value)
+        want = b"".join(i.to_bytes(4, "big") for i in head + dims + item)
+        assert bytes(got) == want
+
+
+@pytest.mark.parametrize("fmt", pq.Format)
+def test_dump_recursive_known_oid(fmt):
+    # With a known oid the dumper doesn't look into the list before dumping
+    obj: list[Any] = []
+    obj.append(obj)
+    tx = Transformer()
+    tx.set_dumper_types([builtins["int4"].array_oid], fmt)
+    with pytest.raises(RecursionError):
+        tx.dump_sequence([obj], [PyFormat.from_pq(fmt)])
+
+
 @pytest.mark.parametrize("fmt_in", PyFormat)
 def test_dump_list_subclass(fmt_in):
     # See #1398: a list subclass (e.g. traits.api.List's TraitListObject)
