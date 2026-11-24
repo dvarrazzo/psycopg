@@ -342,7 +342,7 @@ def _dump_binary_rec(
             if item is not None:
                 # A nested list here means inconsistent depths, but checking
                 # every item is expensive: don't bother, the element dumper
-                # will fail on it.
+                # will fail on it. The C implementation does check.
                 # if isinstance(item, cls):
                 #     raise e.DataError("nested lists have inconsistent depths")
                 # If we get here, the sub_dumper must have been set
@@ -549,4 +549,11 @@ def _load_binary(data: Buffer, tx: Transformer) -> list[Any]:
 
 
 _dump_text = _dump_text_py
-_dump_binary = _dump_binary_py
+
+_dump_binary: Callable[[list[Any], "type[list[Any]]", "Dumper | None"], Buffer]
+
+# Override functions with fast versions if available
+if _psycopg:
+    _dump_binary = _psycopg.array_dump_binary
+else:
+    _dump_binary = _dump_binary_py

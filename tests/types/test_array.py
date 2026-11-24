@@ -13,6 +13,7 @@ import psycopg.types.numeric
 from psycopg import pq, sql
 from psycopg.adapt import Dumper, PyFormat, Transformer
 from psycopg.types import TypeInfo
+from psycopg._cmodule import _psycopg
 from psycopg.postgres import types as builtins
 from psycopg.types.array import register_array
 
@@ -193,6 +194,19 @@ def test_bad_binary_array(input):
     tx = Transformer()
     with pytest.raises(psycopg.DataError):
         tx.get_dumper(input, PyFormat.BINARY).dump(input)
+
+
+@pytest.mark.skipif(_psycopg is None, reason="only checked in C")
+@pytest.mark.parametrize(
+    "input", [[["a"], [["b"]]], ["a", ["b"]], ["a", []], [None, ["a"]]]
+)
+def test_bad_binary_array_depth(input):
+    # A list deeper than the first item. In Python it fails too, but with
+    # whatever error the element dumper raises.
+    tx = Transformer()
+    tx.set_dumper_types([builtins["text"].array_oid], pq.Format.BINARY)
+    with pytest.raises(psycopg.DataError):
+        tx.dump_sequence([input], [PyFormat.BINARY])
 
 
 @pytest.mark.parametrize("input", [[[], [[]]], [[[]], []], [[], None]])
