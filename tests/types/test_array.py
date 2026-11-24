@@ -205,6 +205,22 @@ def test_bad_binary_array_empty(input):
         tx.dump_sequence([input], [PyFormat.BINARY])
 
 
+@pytest.mark.crdb_skip("nested array")
+@pytest.mark.parametrize("fmt_in", PyFormat)
+def test_dump_list_shared(conn, fmt_in):
+    x = [1, 2]
+    cur = conn.execute(f"select %{fmt_in.value}::int[]", ([x, x],))
+    assert cur.fetchone()[0] == [x, x]
+
+
+@pytest.mark.parametrize("fmt_in", PyFormat)
+def test_dump_list_recursive(fmt_in):
+    x: list[Any] = [1, 2]
+    x.append([x])
+    with pytest.raises(psycopg.DataError, match="recursive"):
+        Transformer().get_dumper(x, fmt_in)
+
+
 @pytest.mark.parametrize("fmt_in", PyFormat)
 def test_dump_list_subclass(fmt_in):
     # See #1398: a list subclass (e.g. traits.api.List's TraitListObject)

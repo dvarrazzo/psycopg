@@ -109,6 +109,8 @@ class BaseListDumper(RecursiveDumper):
             elif item is not None:
                 yield item
 
+        # The same list can appear more than once, as long as not in itself.
+        seen.discard(id(L))
         return None
 
     def _get_base_type_info(self, base_oid: int) -> TypeInfo:
