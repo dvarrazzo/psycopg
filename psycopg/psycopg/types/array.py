@@ -163,50 +163,68 @@ class ListDumper(BaseListDumper):
 
         return dumper
 
-    # Double quotes and backslashes embedded in element values will be
-    # backslash-escaped.
-    _re_esc = re.compile(rb'(["\\])')
-
     def dump(self, obj: list[Any]) -> Buffer | None:
-        tokens: list[Buffer] = []
-        needs_quotes = _get_needs_quotes_regexp(self.delimiter).search
-        self._dump_list(obj, tokens, needs_quotes)
-        return b"".join(tokens)
+        return _dump_text(obj, self.sub_dumper, self.delimiter, self._tx)
 
-    def _dump_list(
-        self,
-        obj: list[Any],
-        tokens: list[Buffer],
-        needs_quotes: Callable[[Buffer], object],
-    ) -> None:
-        """
-        Append the tokens of the text representation of a list to *tokens*.
-        """
-        if not obj:
-            tokens.append(b"{}")
-            return
 
-        dump = self.sub_dumper.dump if self.sub_dumper else self._dump_item
-        delimiter = self.delimiter
-        tokens.append(b"{")
-        for item in obj:
-            if item is None:
-                tokens.append(b"NULL")
-            elif isinstance(item, list):
-                self._dump_list(item, tokens, needs_quotes)
-            elif (ad := dump(item)) is None:
+def _dump_text_py(
+    obj: list[Any], sub_dumper: Dumper | None, delimiter: bytes, tx: Transformer
+) -> Buffer:
+    """
+    Return the text representation of a list as Postgres array.
+
+    Dump the items with `!sub_dumper` if specified, otherwise look up a
+    dumper for each of them.
+    """
+    tokens: list[Buffer] = []
+    needs_quotes = _get_needs_quotes_regexp(delimiter).search
+    dump = sub_dumper.dump if sub_dumper else None
+    _dump_text_rec(obj, tokens, needs_quotes, dump, delimiter, tx)
+    return b"".join(tokens)
+
+
+# Double quotes and backslashes embedded in element values will be
+# backslash-escaped.
+_re_esc = re.compile(rb'(["\\])')
+
+
+def _dump_text_rec(
+    obj: list[Any],
+    tokens: list[Buffer],
+    needs_quotes: Callable[[Buffer], object],
+    dump: Callable[[Any], Buffer | None] | None,
+    delimiter: bytes,
+    tx: Transformer,
+) -> None:
+    """
+    Append the tokens of the text representation of a list to *tokens*.
+    """
+    if not obj:
+        tokens.append(b"{}")
+        return
+
+    tokens.append(b"{")
+    for item in obj:
+        if item is None:
+            tokens.append(b"NULL")
+        elif isinstance(item, list):
+            _dump_text_rec(item, tokens, needs_quotes, dump, delimiter, tx)
+        else:
+            if dump:
+                ad = dump(item)
+            else:
+                ad = tx.get_dumper(item, PY_TEXT).dump(item)
+
+            if ad is None:
                 tokens.append(b"NULL")
             else:
                 if needs_quotes(ad):
-                    ad = b'"' + self._re_esc.sub(rb"\\\1", ad) + b'"'
+                    ad = b'"' + _re_esc.sub(rb"\\\1", ad) + b'"'
                 tokens.append(ad)
 
-            tokens.append(delimiter)
+        tokens.append(delimiter)
 
-        tokens[-1] = b"}"
-
-    def _dump_item(self, item: Any) -> Buffer | None:
-        return self._tx.get_dumper(item, PY_TEXT).dump(item)
+    tokens[-1] = b"}"
 
 
 @cache
@@ -264,65 +282,84 @@ class ListBinaryDumper(BaseListDumper):
         return dumper
 
     def dump(self, obj: list[Any]) -> Buffer | None:
-        # Postgres won't take unknown for element oid: fall back on text
-        sub_oid = self.sub_dumper and self.sub_dumper.oid or TEXT_OID
+        return _dump_binary(obj, self.cls, self.sub_dumper)
 
-        if not obj:
-            return _pack_head(0, 0, sub_oid)
 
-        data: list[Buffer] = [b"", b""]  # placeholders to avoid a resize
-        dims: list[int] = []
-        self._calc_dims(obj, dims)
-        hasnull = self._dump_list(obj, 0, dims, data)
+def _dump_binary_py(
+    obj: list[Any], cls: type[list[Any]], sub_dumper: Dumper | None
+) -> Buffer:
+    """
+    Return the binary representation of a list as Postgres array.
 
-        if not dims[-1]:
-            return _pack_head(0, 0, sub_oid)
+    Nested lists are recognised as instances of `!cls`. The `!sub_dumper` can
+    be omitted only if the list contains no item to dump.
+    """
+    # Postgres won't take unknown for element oid: fall back on text
+    sub_oid = sub_dumper and sub_dumper.oid or TEXT_OID
 
-        data[0] = _pack_head(len(dims), hasnull, sub_oid)
-        data[1] = b"".join(_pack_dim(dim, 1) for dim in dims)
-        return b"".join(data)
+    if not obj:
+        return _pack_head(0, 0, sub_oid)
 
-    def _calc_dims(self, L: list[Any], dims: list[int]) -> None:
-        if isinstance(L, self.cls):
-            dims.append(len(L))
-            if L:
-                self._calc_dims(L[0], dims)
+    data: list[Buffer] = [b"", b""]  # placeholders to avoid a resize
+    dims: list[int] = []
+    _calc_dims(obj, cls, dims)
+    hasnull = _dump_binary_rec(obj, cls, sub_dumper, 0, dims, data)
 
-    def _dump_list(
-        self, L: list[Any], dim: int, dims: list[int], data: list[Buffer]
-    ) -> int:
-        """
-        Append the dumped items of a list to *data*.
+    if not dims[-1]:
+        return _pack_head(0, 0, sub_oid)
 
-        Return 1 if any item is null, else 0.
-        """
-        if len(L) != dims[dim]:
-            raise e.DataError("nested lists have inconsistent lengths")
+    data[0] = _pack_head(len(dims), hasnull, sub_oid)
+    data[1] = b"".join(_pack_dim(dim, 1) for dim in dims)
+    return b"".join(data)
 
-        hasnull = 0
-        if dim == len(dims) - 1:
-            for item in L:
-                if item is not None:
-                    # A nested list here means inconsistent depths, but checking
-                    # every item is expensive: don't bother, the element dumper
-                    # will fail on it.
-                    # if isinstance(item, self.cls):
-                    #     raise e.DataError("nested lists have inconsistent depths")
-                    # If we get here, the sub_dumper must have been set
-                    item = self.sub_dumper.dump(item)  # type: ignore[union-attr]
-                if item is not None:
-                    data.append(pack_len(len(item)))
-                    data.append(item)
-                else:
-                    hasnull = 1
-                    data.append(ARRAY_NULL)
-        else:
-            for item in L:
-                if not isinstance(item, self.cls):
-                    raise e.DataError("nested lists have inconsistent depths")
-                hasnull |= self._dump_list(item, dim + 1, dims, data)  # type: ignore
 
-        return hasnull
+def _calc_dims(L: list[Any], cls: type[list[Any]], dims: list[int]) -> None:
+    if isinstance(L, cls):
+        dims.append(len(L))
+        if L:
+            _calc_dims(L[0], cls, dims)
+
+
+def _dump_binary_rec(
+    L: list[Any],
+    cls: type[list[Any]],
+    sub_dumper: Dumper | None,
+    dim: int,
+    dims: list[int],
+    data: list[Buffer],
+) -> int:
+    """
+    Append the dumped items of a list to *data*.
+
+    Return 1 if any item is null, else 0.
+    """
+    if len(L) != dims[dim]:
+        raise e.DataError("nested lists have inconsistent lengths")
+
+    hasnull = 0
+    if dim == len(dims) - 1:
+        for item in L:
+            if item is not None:
+                # A nested list here means inconsistent depths, but checking
+                # every item is expensive: don't bother, the element dumper
+                # will fail on it.
+                # if isinstance(item, cls):
+                #     raise e.DataError("nested lists have inconsistent depths")
+                # If we get here, the sub_dumper must have been set
+                item = sub_dumper.dump(item)  # type: ignore[union-attr]
+            if item is not None:
+                data.append(pack_len(len(item)))
+                data.append(item)
+            else:
+                hasnull = 1
+                data.append(ARRAY_NULL)
+    else:
+        for item in L:
+            if not isinstance(item, cls):
+                raise e.DataError("nested lists have inconsistent depths")
+            hasnull |= _dump_binary_rec(item, cls, sub_dumper, dim + 1, dims, data)
+
+    return hasnull
 
 
 class ArrayLoader(RecursiveLoader):
@@ -509,3 +546,7 @@ def _load_binary(data: Buffer, tx: Transformer) -> list[Any]:
         out = [out[i : i + dim] for i in range(0, len(out), dim)]
 
     return out
+
+
+_dump_text = _dump_text_py
+_dump_binary = _dump_binary_py
