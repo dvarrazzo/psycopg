@@ -21,6 +21,9 @@ Psycopg 3.3.10 (unreleased)
 - Fix `!json` and `!jsonb` loading and dumping when the connection encoding
   is not UTF-8 (:ticket:`#1504`).
 - Add loaders for the PostgreSQL 19 :sql:`oid8` data type (:ticket:`#1510`).
+- Don't slow down sync connections when other threads are busy, in the C
+  implementation: the GIL is no more needed at every step of the connection
+  handshake (:ticket:`#1516`).
 - Fix connection refused on Windows reported as a timeout, after waiting for
   the whole `!connect_timeout` (:ticket:`#1519`).
 

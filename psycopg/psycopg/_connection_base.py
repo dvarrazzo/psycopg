@@ -23,7 +23,7 @@ from ._tpc import Xid
 from .rows import Row
 from .adapt import AdaptersMap
 from ._enums import IsolationLevel
-from ._compat import LiteralString, Self, TypeVar
+from ._compat import LiteralString, TypeVar
 from .pq.misc import connection_summary
 from ._preparing import PrepareManager
 from ._capabilities import capabilities
@@ -428,13 +428,6 @@ class BaseConnection(Generic[Row]):
     #
     # All these generators assume exclusive access to the connection: subclasses
     # should have a lock and hold it before calling and consuming them.
-
-    @classmethod
-    def _connect_gen(cls, conninfo: str = "") -> PQGenConn[Self]:
-        """Generator to connect to the database and create a new instance."""
-        pgconn = yield from generators.connect(conninfo)
-        conn = cls(pgconn)
-        return conn
 
     def _exec_command(
         self, command: QueryNoTemplate, result_format: pq.Format = TEXT

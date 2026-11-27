@@ -532,14 +532,13 @@ def test_connect_args(
 ):
     got_conninfo: str
 
-    def fake_connect(conninfo, *, timeout=0.0):
+    def fake_connect_start(conninfo):
         nonlocal got_conninfo
         got_conninfo = conninfo
         return pgconn
-        yield
 
     setpgenv({})
-    monkeypatch.setattr(psycopg.generators, "connect", fake_connect)
+    monkeypatch.setattr(psycopg.generators, "connect_start", fake_connect_start)
     conn = conn_cls.connect(*args, **kwargs)
     assert conninfo_to_dict(got_conninfo) == conninfo_to_dict(want)
     conn.close()
@@ -1042,12 +1041,12 @@ def test_interrupt_cancel_error(conn, monkeypatch, caplog):
 def test_resolve_hostaddr_conn(conn_cls, monkeypatch, fake_resolve):
     got = ""
 
-    def fake_connect_gen(conninfo, **kwargs):
+    def fake_connect_attempt(conninfo, **kwargs):
         nonlocal got
         got = conninfo
         1 / 0
 
-    monkeypatch.setattr(conn_cls, "_connect_gen", fake_connect_gen)
+    monkeypatch.setattr(conn_cls, "_connect_attempt", fake_connect_attempt)
 
     with pytest.raises(ZeroDivisionError):
         conn_cls.connect("host=foo.com")

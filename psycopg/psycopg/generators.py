@@ -58,9 +58,26 @@ READY_RW = Ready.RW
 logger = logging.getLogger("psycopg")
 
 
-def _connect(conninfo: str) -> PQGenConn[PGconn]:
+def connect_start(conninfo: str) -> PGconn:
     """
-    Generator to create a database connection without blocking.
+    Start a database connection without blocking.
+
+    Return a connection to complete, for instance using `connect_poll()`.
+    """
+    conn = pq.PGconn.connect_start(conninfo.encode())
+    if conn.status == BAD:
+        err = conn.get_error_message(conninfo_encoding(conninfo))
+        raise e.OperationalError(f"connection is bad: {err}", pgconn=conn)
+
+    logger.debug("connection started: %s", conn)
+    return conn
+
+
+def _connect_poll(conn: PGconn, encoding: str = "utf-8") -> PQGenConn[None]:
+    """
+    Generator to complete a connection started by `connect_start()`.
+
+    `!encoding` is the encoding used to decode the error messages.
     """
     # To debug slowdown during connection:
     #
@@ -69,15 +86,9 @@ def _connect(conninfo: str) -> PQGenConn[PGconn]:
     #   >>> logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(message)s')
     #   >>> logging.getLogger("psycopg").setLevel(logging.DEBUG)
 
-    conn = pq.PGconn.connect_start(conninfo.encode())
-    logger.debug("connection started: %s", conn)
-    if conn.status == BAD:
-        err = conn.get_error_message(conninfo_encoding(conninfo))
-        raise e.OperationalError(f"connection is bad: {err}", pgconn=conn)
-
     # As per libpq docs, wait for the socket to be writable before polling.
-    # Not doing so, a refused connection is not detected on Windows.
     status: int = POLL_WRITING
+
     while True:
         if status == POLL_READING or status == POLL_WRITING:
             wait = WAIT_R if status == POLL_READING else WAIT_W
@@ -87,19 +98,25 @@ def _connect(conninfo: str) -> PQGenConn[PGconn]:
         elif status == POLL_OK:
             break
         elif status == POLL_FAILED:
-            err = conn.get_error_message(conninfo_encoding(conninfo))
-            raise e.OperationalError(
-                f"connection failed: {err}", pgconn=e.finish_pgconn(conn)
-            )
+            err = conn.get_error_message(encoding)
+            conn = e.finish_pgconn(conn)
+            raise e.OperationalError(f"connection failed: {err}", pgconn=conn)
         else:
-            raise e.InternalError(
-                f"unexpected poll status: {status}", pgconn=e.finish_pgconn(conn)
-            )
+            conn = e.finish_pgconn(conn)
+            raise e.InternalError(f"unexpected poll status: {status}", pgconn=conn)
 
         status = conn.connect_poll()
         logger.debug("connection polled: %s", conn)
 
     conn.nonblocking = 1
+
+
+def connect(conninfo: str) -> PQGenConn[PGconn]:
+    """
+    Generator to create a database connection without blocking.
+    """
+    conn = connect_start(conninfo)
+    yield from connect_poll(conn, conninfo_encoding(conninfo))
     return conn
 
 
@@ -112,9 +129,8 @@ def _cancel(cancel_conn: PGcancelConn) -> PQGenConn[None]:
             while not (yield cancel_conn.socket, wait):
                 pass
         elif status == POLL_FAILED:
-            raise e.OperationalError(
-                f"cancellation failed: {cancel_conn.get_error_message()}"
-            )
+            err = cancel_conn.get_error_message()
+            raise e.OperationalError(f"cancellation failed: {err}")
         else:
             raise e.InternalError(f"unexpected poll status: {status}")
 
@@ -373,7 +389,7 @@ def copy_end(pgconn: PGconn, error: bytes | None) -> PQGen[PGresult]:
 
 # Override functions with fast versions if available
 if _psycopg:
-    connect = _psycopg.connect
+    connect_poll = _psycopg.connect_poll
     cancel = _psycopg.cancel
     execute = _psycopg.execute
     send = _psycopg.send
@@ -382,7 +398,7 @@ if _psycopg:
     pipeline_communicate = _psycopg.pipeline_communicate
 
 else:
-    connect = _connect
+    connect_poll = _connect_poll
     cancel = _cancel
     execute = _execute
     send = _send

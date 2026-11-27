@@ -23,6 +23,7 @@ from . import errors as e
 from .abc import RV, PQGen, PQGenConn, ReadyFunc, WaitFunc
 from ._enums import Ready as Ready
 from ._enums import Wait as Wait  # re-exported
+from .pq.abc import PGconn
 from ._cmodule import _psycopg
 
 WAIT_R = Wait.R
@@ -161,6 +162,36 @@ def wait_conn(
     except StopIteration as ex:
         rv: RV = ex.value
         return rv
+
+
+def wait_connect_gen(
+    pgconn: PGconn,
+    interval: float = 0.0,
+    timeout: float | None = None,
+    encoding: str = "utf-8",
+) -> None:
+    """
+    Complete a connection started by `~psycopg.generators.connect_start()`.
+
+    :param pgconn: the connection to complete.
+    :param interval: interval (in seconds) to check for other interrupts, e.g.
+        to allow Ctrl-C.
+    :param timeout: maximum time (in seconds) to wait for the connection.
+        Close `!pgconn` and raise `~psycopg.errors._WaitTimeout` when it
+        expires. `!None` means no timeout.
+    :param encoding: the encoding used to decode the error messages.
+
+    This is the generic implementation of `wait_connect()`, driving the
+    `~psycopg.generators.connect_poll()` generator using `wait_conn()`.
+    """
+    from .generators import connect_poll
+
+    try:
+        gen = connect_poll(pgconn, encoding)
+        wait_conn(gen, interval=interval, timeout=timeout)
+    except e._WaitTimeout:
+        pgconn.finish()
+        raise
 
 
 def _ready_poll(fileno: int, s: Wait) -> int:
@@ -372,6 +403,34 @@ async def wait_conn_async(
         return rv
 
 
+async def wait_connect_async(
+    pgconn: PGconn,
+    interval: float = 0.0,
+    timeout: float | None = None,
+    encoding: str = "utf-8",
+) -> None:
+    """
+    Coroutine completing a connection started by
+    `~psycopg.generators.connect_start()`.
+
+    :param pgconn: the connection to complete.
+    :param interval: interval (in seconds) to check for other interrupts, e.g.
+        to allow Ctrl-C.
+    :param timeout: maximum time (in seconds) to wait for the connection.
+        Close `!pgconn` and raise `~psycopg.errors._WaitTimeout` when it
+        expires. `!None` means no timeout.
+    :param encoding: the encoding used to decode the error messages.
+    """
+    from .generators import connect_poll
+
+    try:
+        gen = connect_poll(pgconn, encoding)
+        await wait_conn_async(gen, interval=interval, timeout=timeout)
+    except e._WaitTimeout:
+        pgconn.finish()
+        raise
+
+
 # Specialised implementation of wait functions.
 
 
@@ -574,6 +633,7 @@ def _is_select_patched() -> bool:
 if _psycopg:
     wait_c = _psycopg.wait_c
     _ready_c = _psycopg.ready_c
+    wait_connect_c = _psycopg.wait_connect_c
 
 
 # Choose the best wait strategy for the platform, and the function checking a
@@ -619,3 +679,12 @@ elif hasattr(selectors, "PollSelector"):
 else:
     wait = wait_selector
     _ready = _ready_default
+
+
+# Function to complete a connection. The C version doesn't need the GIL at
+# every step of the handshake, so it is not slowed down by other busy threads,
+# but it can be used only in the same cases the C wait function can.
+if _psycopg and wait is wait_c:
+    wait_connect = wait_connect_c
+else:
+    wait_connect = wait_connect_gen

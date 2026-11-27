@@ -10,12 +10,13 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 
 def test_connect_operationalerror_pgconn(generators, dsn, monkeypatch):
-    """Check that when generators.connect() fails, the resulting
+    """Check that when generators.connect_poll() fails, the resulting
     OperationalError has a pgconn attribute set with needs_password.
     """
-    gen = generators.connect(dsn)
+    pgconn = psycopg.generators.connect_start(dsn)
+    waiting.wait_conn(generators.connect_poll(pgconn))
 
-    if not (pgconn := waiting.wait_conn(gen)).used_password:
+    if not pgconn.used_password:
         pytest.skip("test connection needs no password")
 
     with monkeypatch.context() as m:
@@ -26,21 +27,21 @@ def test_connect_operationalerror_pgconn(generators, dsn, monkeypatch):
             del info["password"]  # should not raise per check above.
             dsn = make_conninfo("", **info)
 
-        gen = generators.connect(dsn)
+        pgconn = psycopg.generators.connect_start(dsn)
         with pytest.raises(
             psycopg.OperationalError, match="connection failed:"
         ) as excinfo:
-            waiting.wait_conn(gen)
+            waiting.wait_conn(generators.connect_poll(pgconn))
 
-    pgconn = excinfo.value.pgconn
-    assert pgconn is not None
-    assert pgconn.needs_password
-    assert b"fe_sendauth: no password supplied" in pgconn.error_message
-    assert pgconn.status == pq.ConnStatus.BAD.value
-    assert pgconn.transaction_status == pq.TransactionStatus.UNKNOWN.value
-    assert pgconn.pipeline_status == pq.PipelineStatus.OFF.value
+    expgconn = excinfo.value.pgconn
+    assert expgconn is not None
+    assert expgconn.needs_password
+    assert b"fe_sendauth: no password supplied" in expgconn.error_message
+    assert expgconn.status == pq.ConnStatus.BAD.value
+    assert expgconn.transaction_status == pq.TransactionStatus.UNKNOWN.value
+    assert expgconn.pipeline_status == pq.PipelineStatus.OFF.value
     with pytest.raises(psycopg.OperationalError, match="connection is closed"):
-        pgconn.exec_(b"select 1")
+        expgconn.exec_(b"select 1")
 
 
 @pytest.mark.slow

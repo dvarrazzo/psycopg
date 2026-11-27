@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator, AsyncIterator
 
 from . import errors as e
-from . import pq, waiting
+from . import generators, pq, waiting
 from .abc import RV, AdaptContext, ConnDict, ConnParam, Params, PQGen, Query
 from .abc import QueryNoTemplate
 from ._tpc import Xid
@@ -26,6 +26,7 @@ from ._compat import Self, Template
 from ._acompat import ALock
 from .conninfo import conninfo_attempts_async, conninfo_to_dict, make_conninfo
 from .conninfo import timeout_from_conninfo
+from ._encodings import conninfo_encoding
 from .generators import notifies
 from .transaction import AsyncTransaction
 from .cursor_async import AsyncCursor
@@ -121,10 +122,7 @@ class AsyncConnection(BaseConnection[Row]):
             logger.debug("connection attempt: %s", descr)
             try:
                 conninfo = make_conninfo("", **attempt)
-                gen = cls._connect_gen(conninfo)
-                rv = await waiting.wait_conn_async(
-                    gen, interval=_WAIT_INTERVAL, timeout=timeout
-                )
+                rv = await cls._connect_attempt(conninfo, timeout=timeout)
             except e._WaitTimeout:
                 tex = e.ConnectionTimeout("connection timeout expired")
                 logger.debug("connection failed: %s: %s", descr, str(tex))
@@ -175,6 +173,18 @@ class AsyncConnection(BaseConnection[Row]):
             rv._adapters = AdaptersMap(context.adapters)
         rv.prepare_threshold = prepare_threshold
         return rv
+
+    @classmethod
+    async def _connect_attempt(cls, conninfo: str, *, timeout: float) -> Self:
+        """Connect to a single host and return a new instance."""
+        pgconn = generators.connect_start(conninfo)
+        await waiting.wait_connect_async(
+            pgconn,
+            interval=_WAIT_INTERVAL,
+            timeout=timeout,
+            encoding=conninfo_encoding(conninfo),
+        )
+        return cls(pgconn)
 
     async def __aenter__(self) -> Self:
         return self

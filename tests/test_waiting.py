@@ -13,12 +13,19 @@ from psycopg import generators, waiting
 from psycopg.pq import ConnStatus, ExecStatus
 from psycopg.conninfo import make_conninfo
 
-from .acompat import Event, gather, sleep, spawn
+from .acompat import Event, gather, skip_async, sleep, spawn
 
 skip_if_not_linux = pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="non-Linux platform"
 )
 
+connfns = [
+    "wait_connect",
+    "wait_connect_gen",
+    pytest.param(
+        "wait_connect_c", marks=pytest.mark.skipif("not psycopg._cmodule._psycopg")
+    ),
+]
 waitfns = [
     "wait",
     "wait_selector",
@@ -69,6 +76,95 @@ def test_wait_conn_with_timeout_expired(proxy, interval):
             waiting.wait_conn(gen, interval, timeout=0.25)
         dt = time.time() - t0
     assert dt == pytest.approx(0.25, abs=0.03)
+
+
+@pytest.mark.parametrize("connfn", connfns)
+@pytest.mark.parametrize("interval", intervals)
+def test_wait_connect(dsn, connfn, interval):
+    connfn = getattr(waiting, connfn)
+    pgconn = generators.connect_start(dsn)
+    assert pgconn.status != ConnStatus.OK
+    connfn(pgconn, interval)
+    assert pgconn.status == ConnStatus.OK
+    assert pgconn.nonblocking
+
+
+@pytest.mark.parametrize("connfn", connfns)
+@pytest.mark.parametrize("timeout", [None, 10])
+def test_wait_connect_timeout_not_expired(dsn, connfn, timeout):
+    connfn = getattr(waiting, connfn)
+    pgconn = generators.connect_start(dsn)
+    connfn(pgconn, 0.1, timeout=timeout)
+    assert pgconn.status == ConnStatus.OK
+
+
+@pytest.mark.crdb("skip", reason="can connect to any db name")
+@pytest.mark.parametrize("connfn", connfns)
+def test_wait_connect_bad(dsn, connfn):
+    connfn = getattr(waiting, connfn)
+    dsn = make_conninfo(dsn, dbname="nosuchdb")
+    pgconn = generators.connect_start(dsn)
+    with pytest.raises(psycopg.OperationalError, match="nosuchdb") as ex:
+        connfn(pgconn, 0.1)
+    assert pgconn.status == ConnStatus.BAD
+    assert ex.value.pgconn
+    assert ex.value.pgconn.status == ConnStatus.BAD
+
+
+@pytest.mark.parametrize("connfn", connfns)
+def test_wait_connect_refused(connfn):
+    connfn = getattr(waiting, connfn)
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+
+    dsn = f"host=127.0.0.1 port={port}"
+    pgconn = generators.connect_start(dsn)
+    with pytest.raises(
+        psycopg.OperationalError, match="(Connection refused)|(connect\\(\\) failed)"
+    ):
+        connfn(pgconn, 0.1, timeout=5)
+
+
+@pytest.mark.slow
+@pytest.mark.timing
+@pytest.mark.parametrize("connfn", connfns)
+@pytest.mark.parametrize("interval", [0, 0.1])
+def test_wait_connect_with_timeout_expired(proxy, connfn, interval):
+    connfn = getattr(waiting, connfn)
+    with proxy.deaf_listen():
+        pgconn = generators.connect_start(proxy.client_dsn)
+        t0 = time.time()
+        with pytest.raises(psycopg.errors._WaitTimeout):
+            connfn(pgconn, interval, timeout=0.25)
+        dt = time.time() - t0
+    assert dt == pytest.approx(0.25, abs=0.03)
+    assert pgconn.status == ConnStatus.BAD
+
+
+@skip_async
+@pytest.mark.slow
+@pytest.mark.timing
+@pytest.mark.skipif("sys.platform == 'win32'", reason="no SIGALRM")
+@pytest.mark.parametrize("connfn", connfns)
+def test_wait_connect_interrupt(proxy, connfn):
+    import signal
+
+    connfn = getattr(waiting, connfn)
+    with proxy.deaf_listen():
+        pgconn = generators.connect_start(proxy.client_dsn)
+        # Raise KeyboardInterrupt during the connection, as Ctrl-C would.
+        handler = signal.signal(signal.SIGALRM, signal.default_int_handler)
+        signal.setitimer(signal.ITIMER_REAL, 0.25)
+        t0 = time.time()
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                connfn(pgconn, 0.1, timeout=2)
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, handler)
+        dt = time.time() - t0
+    assert dt == pytest.approx(0.25, abs=0.15)
 
 
 @pytest.mark.slow

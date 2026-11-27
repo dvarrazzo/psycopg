@@ -11,7 +11,6 @@ from collections import deque
 from psycopg import errors as e
 from psycopg.abc import PipelineCommand, PQGen
 from psycopg._enums import Ready, Wait
-from psycopg._encodings import conninfo_encoding
 
 
 cdef object WAIT_W = Wait.W
@@ -27,23 +26,17 @@ cdef int READY_W = Ready.W
 cdef int READY_RW = Ready.RW
 
 
-def connect(conninfo: str) -> PQGenConn[abc.PGconn]:
+def connect_poll(pq.PGconn conn, encoding: str = "utf-8") -> PQGenConn[None]:
     """
-    Generator to create a database connection without blocking.
+    Generator to complete a connection started by `connect_start()`.
+
+    `!encoding` is the encoding used to decode the error messages.
     """
-    cdef pq.PGconn conn = pq.PGconn.connect_start(conninfo.encode())
     cdef libpq.PGconn *pgconn_ptr = conn._pgconn_ptr
-    cdef int poll_status
+    # As per libpq docs, wait for the socket to be writable before polling.
+    cdef int poll_status = libpq.PGRES_POLLING_WRITING
     cdef object wait
 
-    logger.debug("connection started: %s", conn)
-    if libpq.PQstatus(pgconn_ptr) == libpq.CONNECTION_BAD:
-        err = conn.get_error_message(conninfo_encoding(conninfo))
-        raise e.OperationalError(f"connection is bad: {err}", pgconn=conn)
-
-    # As per libpq docs, wait for the socket to be writable before polling.
-    # Not doing so, a refused connection is not detected on Windows.
-    poll_status = libpq.PGRES_POLLING_WRITING
     while True:
         if (
             poll_status == libpq.PGRES_POLLING_READING
@@ -55,23 +48,25 @@ def connect(conninfo: str) -> PQGenConn[abc.PGconn]:
 
         elif poll_status == libpq.PGRES_POLLING_OK:
             break
-        elif poll_status == libpq.PGRES_POLLING_FAILED:
-            err = conn.get_error_message(conninfo_encoding(conninfo))
-            raise e.OperationalError(
-                f"connection failed: {err}", pgconn=e.finish_pgconn(conn),
-            )
         else:
-            raise e.InternalError(
-                f"unexpected poll status: {poll_status}",
-                pgconn=e.finish_pgconn(conn),
-            )
+            _raise_connect_failed(conn, encoding, poll_status)
 
         with nogil:
             poll_status = libpq.PQconnectPoll(pgconn_ptr)
         logger.debug("connection polled: %s", conn)
 
     conn.nonblocking = 1
-    return conn
+
+
+cdef object _raise_connect_failed(pq.PGconn conn, str encoding, int poll_status):
+    """Raise the exception for a failed `PQconnectPoll()`, closing `!conn`."""
+    if poll_status == libpq.PGRES_POLLING_FAILED:
+        err = conn.get_error_message(encoding)
+        raise e.OperationalError(
+            f"connection failed: {err}", pgconn=e.finish_pgconn(conn))
+    else:
+        raise e.InternalError(
+            f"unexpected poll status: {poll_status}", pgconn=e.finish_pgconn(conn))
 
 
 def cancel(pq.PGcancelConn cancel_conn) -> PQGenConn[None]:
@@ -92,9 +87,8 @@ def cancel(pq.PGcancelConn cancel_conn) -> PQGenConn[None]:
             while not (yield (libpq.PQcancelSocket(pgcancelconn_ptr), wait)):
                 pass
         elif status == libpq.PGRES_POLLING_FAILED:
-            raise e.OperationalError(
-                f"cancellation failed: {cancel_conn.get_error_message()}"
-            )
+            err = cancel_conn.get_error_message()
+            raise e.OperationalError(f"cancellation failed: {err}")
         else:
             raise e.InternalError(f"unexpected poll status: {status}")
 

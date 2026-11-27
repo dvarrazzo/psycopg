@@ -383,6 +383,7 @@ class RenameAsyncToSync(ast.NodeTransformer):  # type: ignore
         "test_pool_common_async": "test_pool_common",
         "wait_async": "wait",
         "wait_conn_async": "wait_conn",
+        "wait_connect_async": "wait_connect",
         "wait_timeout": "wait",
     }
     _skip_imports = {
