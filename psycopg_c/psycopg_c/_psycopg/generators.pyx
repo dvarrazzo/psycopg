@@ -33,23 +33,18 @@ def connect(conninfo: str) -> PQGenConn[abc.PGconn]:
     """
     cdef pq.PGconn conn = pq.PGconn.connect_start(conninfo.encode())
     cdef libpq.PGconn *pgconn_ptr = conn._pgconn_ptr
-    cdef int conn_status = libpq.PQstatus(pgconn_ptr)
     cdef int poll_status
     cdef object wait
 
     logger.debug("connection started: %s", conn)
+    if libpq.PQstatus(pgconn_ptr) == libpq.CONNECTION_BAD:
+        err = conn.get_error_message(conninfo_encoding(conninfo))
+        raise e.OperationalError(f"connection is bad: {err}", pgconn=conn)
+
+    # As per libpq docs, wait for the socket to be writable before polling.
+    # Not doing so, a refused connection is not detected on Windows.
+    poll_status = libpq.PGRES_POLLING_WRITING
     while True:
-        if conn_status == libpq.CONNECTION_BAD:
-            encoding = conninfo_encoding(conninfo)
-            raise e.OperationalError(
-                f"connection is bad: {conn.get_error_message(encoding)}",
-                pgconn=conn
-            )
-
-        with nogil:
-            poll_status = libpq.PQconnectPoll(pgconn_ptr)
-        logger.debug("connection polled: %s", conn)
-
         if (
             poll_status == libpq.PGRES_POLLING_READING
             or poll_status == libpq.PGRES_POLLING_WRITING
@@ -61,16 +56,19 @@ def connect(conninfo: str) -> PQGenConn[abc.PGconn]:
         elif poll_status == libpq.PGRES_POLLING_OK:
             break
         elif poll_status == libpq.PGRES_POLLING_FAILED:
-            encoding = conninfo_encoding(conninfo)
+            err = conn.get_error_message(conninfo_encoding(conninfo))
             raise e.OperationalError(
-                f"connection failed: {conn.get_error_message(encoding)}",
-                pgconn=e.finish_pgconn(conn),
+                f"connection failed: {err}", pgconn=e.finish_pgconn(conn),
             )
         else:
             raise e.InternalError(
                 f"unexpected poll status: {poll_status}",
                 pgconn=e.finish_pgconn(conn),
             )
+
+        with nogil:
+            poll_status = libpq.PQconnectPoll(pgconn_ptr)
+        logger.debug("connection polled: %s", conn)
 
     conn.nonblocking = 1
     return conn

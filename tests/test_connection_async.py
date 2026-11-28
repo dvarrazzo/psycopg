@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+import socket
 import logging
 import weakref
 from typing import Any
@@ -37,6 +38,19 @@ async def test_connect(aconn_cls, dsn):
 async def test_connect_bad(aconn_cls, dsn):
     with pytest.raises(psycopg.OperationalError):
         await aconn_cls.connect(dsn, dbname="nosuchdb")
+
+
+async def test_connect_refused(aconn_cls):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+
+    # Nobody listens on the port: the error must be reported by the libpq,
+    # the connection must not wait for the timeout.
+    with pytest.raises(
+        psycopg.OperationalError, match="(Connection refused)|(connect\\(\\) failed)"
+    ):
+        await aconn_cls.connect(f"host=127.0.0.1 port={port} connect_timeout=10")
 
 
 @pytest.mark.slow

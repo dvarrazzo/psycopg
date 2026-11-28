@@ -71,16 +71,14 @@ def _connect(conninfo: str) -> PQGenConn[PGconn]:
 
     conn = pq.PGconn.connect_start(conninfo.encode())
     logger.debug("connection started: %s", conn)
+    if conn.status == BAD:
+        err = conn.get_error_message(conninfo_encoding(conninfo))
+        raise e.OperationalError(f"connection is bad: {err}", pgconn=conn)
+
+    # As per libpq docs, wait for the socket to be writable before polling.
+    # Not doing so, a refused connection is not detected on Windows.
+    status: int = POLL_WRITING
     while True:
-        if conn.status == BAD:
-            encoding = conninfo_encoding(conninfo)
-            raise e.OperationalError(
-                f"connection is bad: {conn.get_error_message(encoding)}", pgconn=conn
-            )
-
-        status = conn.connect_poll()
-        logger.debug("connection polled: %s", conn)
-
         if status == POLL_READING or status == POLL_WRITING:
             wait = WAIT_R if status == POLL_READING else WAIT_W
             while not (yield conn.socket, wait):
@@ -89,15 +87,17 @@ def _connect(conninfo: str) -> PQGenConn[PGconn]:
         elif status == POLL_OK:
             break
         elif status == POLL_FAILED:
-            encoding = conninfo_encoding(conninfo)
+            err = conn.get_error_message(conninfo_encoding(conninfo))
             raise e.OperationalError(
-                f"connection failed: {conn.get_error_message(encoding)}",
-                pgconn=e.finish_pgconn(conn),
+                f"connection failed: {err}", pgconn=e.finish_pgconn(conn)
             )
         else:
             raise e.InternalError(
                 f"unexpected poll status: {status}", pgconn=e.finish_pgconn(conn)
             )
+
+        status = conn.connect_poll()
+        logger.debug("connection polled: %s", conn)
 
     conn.nonblocking = 1
     return conn
